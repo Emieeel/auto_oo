@@ -28,12 +28,17 @@ class Moldata_pyscf():
         """
         self.mol = gto.Mole(atom=geometry,basis=basis, **kwargs)
         self.mol.build()
-        self.int1e_AO = self.mol.intor('int1e_kin') + self.mol.intor('int1e_nuc')
-        self.int2e_AO = self.mol.intor('int2e')
+        self.int1e_ao = self.mol.intor('int1e_kin') + self.mol.intor('int1e_nuc')
+        self.int2e_ao = self.mol.intor('int2e')
         self.overlap = self.mol.intor('int1e_ovlp')
         self.oao_coeff = ao_to_oao(self.overlap)
         self.nuc = self.mol.get_enuc()
         self.nao = self.overlap.shape[0]
+        self.hf = None
+        self.fci = None
+        self.casci = None
+        self.casscf = None
+        self.sa_casscf = None
         
     def get_active_space_idx(self, ncas, nelecas):
         # Set active space parameters
@@ -65,11 +70,10 @@ class Moldata_pyscf():
         self.fci.nroots = n_roots                                    
         self.fci.kernel(verbose = verbose)
         
-    def run_casci(self, n_roots=1, mo=None, fix_singlet=1):
+    def run_casci(self, ncas, nelecas, n_roots=1, mo=None, fix_singlet=1):
         """Run PySCF CASCI"""
-        self.check_cas()
         self.run_rhf()
-        self.casci = self.hf.CASCI(self.ncas, self.nelecas)
+        self.casci = self.hf.CASCI(ncas, nelecas)
         self.casci.fcisolver.nroots = n_roots
         if fix_singlet:
             self.casci.fix_spin_(shift=1.5,ss=0)
@@ -78,20 +82,18 @@ class Moldata_pyscf():
         else:
             self.casci.kernel()
         
-    def run_casscf(self, fix_singlet=1):
+    def run_casscf(self, ncas, nelecas, fix_singlet=1):
         """Run PySCF CASSCF"""
-        self.check_cas()
         self.run_rhf()
-        self.casscf = mcscf.CASSCF(self.hf, self.ncas, self.nelecas)
+        self.casscf = mcscf.CASSCF(self.hf, ncas, nelecas)
         if fix_singlet:
             self.casscf.fix_spin_(ss=0)
         self.casscf.kernel()
     
-    def run_sa_casscf(self, fix_singlet=1):
+    def run_sa_casscf(self, ncas, nelecas, fix_singlet=1):
         """Run PySCF SA-CASSCF"""
-        self.check_cas()
         self.run_rhf()
-        self.sa_casscf = mcscf.CASSCF(self.hf,self.ncas,self.nelecas)
+        self.sa_casscf = mcscf.CASSCF(self.hf, ncas, nelecas)
         self.sa_casscf.state_average_([0.5,0.5])
         if fix_singlet:
             self.sa_casscf.fcisolver.spin = 0

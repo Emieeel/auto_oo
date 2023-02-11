@@ -14,7 +14,6 @@ import pennylane as qml
 import torch
 
 import openfermion
-import pyscf
 
 # construct the combinations of delta functions in einstein notation
 # p=q=r=s (same spin):
@@ -25,53 +24,6 @@ _X = torch.Tensor([[0., 1.], [1., 0.]])
 _mix4d = torch.einsum('ia, ib, ic, id', torch.eye(2), _X, _X, torch.eye(2))
 
 _spin_comp_tensor = (_eye4d + _mix4d) / 2
-
-def vec_to_skew_symmetric(vector):
-    r"""
-    Map a vector to an anti-symmetric matrix with np.tril_indices.
-    
-    For example, the resulting matrix for `np.Tensor([1,2,3,4,5,6])` is:
-
-    .. math::
-        \begin{pmatrix}
-            0 & -1 & -2 & -4\\
-            1 &  0 & -3 & -5\\
-            2 &  3 &  0 & -6\\
-            4 &  5 &  6 &  0
-        \end{pmatrix}
-
-    Args:
-        params (np.Tensor): 1d tensor of parameters
-·
-    """
-    size = int(np.sqrt(8 * len(vector) + 1) + 1)//2
-    matrix = np.zeros((size,size))
-    tril_indices = np.tril_indices(row=size,col=size, offset=-1)
-    matrix[tril_indices[0],tril_indices[1]] = vector
-    matrix[tril_indices[1],tril_indices[0]] = - vector
-    return matrix
-
-
-def general_4index_transform(M, C0, C1, C2, C3):
-    """
-    M is a rank-4 tensor, Cs are rank-2 tensors representing ordered index 
-    transformations of M
-    """
-    M = np.einsum('pi, pqrs', C0, M)
-    M = np.einsum('qj, iqrs', C1, M)
-    M = np.einsum('rk, ijrs', C2, M)
-    M = np.einsum('sl, ijks', C3, M)
-    return M
-
-def uniform_4index_transform(M, C):
-    """
-    Autodifferentiable index transformation for two-electron tensor.
-    
-    Note: on a test case (dimension 13) this is 3x faster than optimized einsum,
-        and >1000x more efficient than unoptimized einsum.
-        Computing the Jacobian is also very efficient.
-    """
-    return general_4index_transform(M, C, C, C, C)
 
 def restricted_to_unrestricted(tensor):
     '''
@@ -257,29 +209,3 @@ def sz(ncas):
     nqubits = 2 * ncas
     sz_ham = qml.qchem.spinz(nqubits)
     return qml.matrix(sz_ham)
-
-def fock_core(one_body_integrals, two_body_integrals, occ_idx):
-    g_tilde = (
-        2 * torch.sum(two_body_integrals[:, :, occ_idx, occ_idx], dim=-1) # p^ i^ i q 
-          - torch.sum(two_body_integrals[:, occ_idx, occ_idx, :], dim=1)) # p^ i^ q i
-    return one_body_integrals + g_tilde
-
-def fock_active(one_body_integrals, two_body_integrals, one_rdm, act_idx):
-    g_tilde = (
-    two_body_integrals[:,:,:,act_idx][:,:,act_idx,:]
-    -.5 * torch.permute(two_body_integrals[:,:,act_idx,:][:,act_idx,:,:],(0,3,2,1)))
-    return torch.einsum('wx, pqwx', one_rdm, g_tilde)
-
-def fock_generalized(one_body_integrals, two_body_integrals,
-                     one_rdm, two_rdm, occ_idx, act_idx):
-    fock_C = fock_core(one_body_integrals, two_body_integrals, occ_idx)
-    fock_A = fock_active(one_rdm, two_body_integrals, act_idx)
-    fock_general = torch.zeros(one_body_integrals.shape)
-    fock_general[occ_idx,:] = 2 * torch.t(fock_C[:,occ_idx] + fock_A[:,occ_idx])
-    fock_general[act_idx,:] = torch.einsum('qw,vw->vq',fock_C[:,act_idx],one_rdm) + torch.einsum(
-        'vwxy,qwxy->vq',two_rdm,two_body_integrals[:,:,:,act_idx][:,:,act_idx,:][:,act_idx,:,:])
-    return fock_general
-
-
-
-  

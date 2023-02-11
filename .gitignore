@@ -139,7 +139,7 @@ dmypy.json
 tmp*
 
 # python auxiliary folders
-**/berryphase.egg-info/
+**/auto_oo.egg-info/
 **/__pycache__/
 
 # Data joana (too heavy)

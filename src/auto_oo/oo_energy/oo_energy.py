@@ -11,9 +11,10 @@ import itertools
 import numpy as np
 
 import torch
-import openfermion
 
-from auto_oo.main import integrals
+from auto_oo.oo_energy import integrals
+
+torch.set_default_tensor_type(torch.DoubleTensor)
 
 def general_4index_transform(M, C0, C1, C2, C3):
     """
@@ -36,6 +37,14 @@ def uniform_4index_transform(M, C):
     """
     return general_4index_transform(M, C, C, C, C)
 
+def int1e_transform(int1e_ao, mo_coeff):
+    """Transform 1e MO-integrals"""
+    return mo_coeff.T @ int1e_ao @ mo_coeff
+
+def int2e_transform(int2e_ao, mo_coeff):
+    """Transform 2e MO-integrals"""
+    return uniform_4index_transform(int2e_ao, mo_coeff)
+
 class OO_energy():
     def __init__(self, mol, ncas, nelecas,
                  mo_coeff=None, freeze_active=False):
@@ -55,8 +64,8 @@ class OO_energy():
                 Freeze active-active oo indices
         """
         # Set molecular data
-        self.int1e_AO = mol.int1e_AO
-        self.int2e_AO = mol.int2e_AO
+        self.int1e_ao = torch.from_numpy(mol.int1e_ao)
+        self.int2e_ao = torch.from_numpy(mol.int2e_ao)
         self.overlap = mol.overlap
         self.oao_coeff = mol.oao_coeff
         self.nuc = mol.nuc
@@ -64,9 +73,15 @@ class OO_energy():
         
         if mo_coeff is None:
             mol.run_rhf()
-            self.mo_coeff = mol.hf.mo_coeff
+            self.mo_coeff = torch.from_numpy(mol.hf.mo_coeff)
         else:
-            self.mo_coeff = mo_coeff
+            if type(mo_coeff) == np.ndarray:
+                self.mo_coeff = torch.from_numpy(mo_coeff)
+            else:
+                self.mo_coeff = mo_coeff
+        
+        self.int1e_mo = int1e_transform(self.int1e_ao, self.mo_coeff)
+        self.int2e_mo = int2e_transform(self.int2e_ao, self.mo_coeff)
         
         # Set active space parameters
         self.ncas = ncas
@@ -75,27 +90,9 @@ class OO_energy():
         self.occ_idx, self.act_idx, self.virt_idx = mol.get_active_space_idx(
             ncas, nelecas)
 
-        rotation_sizes = [len(self.occ_idx)*len(self.act_idx),
-                          len(self.act_idx)*len(self.virt_idx),
-                          len(self.occ_idx)*len(self.virt_idx)]
-        if not freeze_active:
-            rotation_sizes.append(
-                len(self.act_idx) * (len(self.act_idx) - 1)//2)
-        self.kappa_len = sum(rotation_sizes)
-
-        # Save non-redundant kappa indices
-        self.params_idx = np.array([], dtype=int)
-
-        num = 0
-        for l_idx, r_idx in zip(*np.tril_indices(self.nao,-1)):
-            if not(
-            ((l_idx in self.act_idx and r_idx in self.act_idx
-              ) and freeze_active) or (
-                  l_idx in self.occ_idx and r_idx in self.occ_idx) or (
-                    l_idx in self.virt_idx and r_idx in self.virt_idx)):
-                self.params_idx = np.append(self.params_idx, [num])
-            num +=1
-    
+    def update_integrals(self, mo_coeff):
+        self.int1_mo = int1e_transform(self.int1e_ao, mo_coeff)
+        self.int2_mo = int1e_transform(self.int2e_ao, mo_coeff)
     
     def energy_from_mo_coeff(self, mo_coeff, one_rdm, two_rdm):
         r"""
@@ -114,31 +111,48 @@ class OO_energy():
         in chemist ordering.
         """
         c0, c1, c2 = self.get_active_integrals(mo_coeff)
-        return sum(c0,
-                   torch.einsum('pq, pq', c1, one_rdm),
-                   torch.einsum('pqrs, pqrs', c2, two_rdm))
+        return sum((c0,
+                    torch.einsum('pq, pq', c1, one_rdm),
+                    torch.einsum('pqrs, pqrs', c2, two_rdm)))
         
     
     def get_active_integrals(self, mo_coeff):
-        int1e = self.int1e_mo(mo_coeff)
-        int2e = self.int2e_mo(mo_coeff)
+        int1e = int1e_transform(self.int1e_ao, mo_coeff)
+        int2e = int2e_transform(self.int2e_ao, mo_coeff)
         return integrals.molecular_hamiltonian_coefficients(
             self.nuc, int1e, int2e, self.occ_idx, self.act_idx)
-        
-    def int1e_transform(self, mo_coeff):
-        """1e MO-integrals in chemists order"""
-        return mo_coeff.T @ self.int1e_AO @ mo_coeff
 
-    def int2e_mo(self, mo_coeff):
-        """2e MO-integrals in chemists order"""
-        return uniform_4index_transform(self.int2e_AO, mo_coeff)
+    def fock_core(self, int1e_mo, int2e_mo):
+        g_tilde = (
+            2 * torch.sum(int2e_mo[:, :, self.occ_idx, self.occ_idx], dim=-1) # p^ i^ i q 
+              - torch.sum(int2e_mo[:, self.occ_idx, self.occ_idx, :], dim=1)) # p^ i^ q i
+        return int1e_mo + g_tilde
+    
+    def fock_active(self, int1e_mo, int2e_mo, one_rdm):
+        g_tilde = (
+        int2e_mo[:,:,:,self.act_idx][:,:,self.act_idx,:]
+        -.5 * torch.permute(int2e_mo[:,:,self.act_idx,:][:,self.act_idx,:,:],(0,3,2,1)))
+        return torch.einsum('wx, pqwx', one_rdm, g_tilde)
+    
+    def fock_generalized(self, int1e_mo, int2e_mo, one_rdm, two_rdm):
+        fock_C = self.fock_core(int1e_mo, int2e_mo, self.occ_idx)
+        fock_A = self.fock_active(one_rdm, int2e_mo, self.act_idx)
+        fock_general = torch.zeros(int1e_mo.shape)
+        fock_general[self.occ_idx,:] = 2 * torch.t(fock_C[:,self.occ_idx] + fock_A[:,self.occ_idx])
+        fock_general[self.act_idx,:] = torch.einsum(
+            'qw,vw->vq',fock_C[:,self.act_idx],one_rdm) + torch.einsum(
+            'vwxy,qwxy->vq',
+            two_rdm,int2e_mo[:,:,:,self.act_idx][:,:,self.act_idx,:][:,self.act_idx,:,:])
+        return fock_general
 
-    def update_integrals(self, mo_coeff):
-        self.int1
-   
-    def orbital_gradient(self, one_rdm, two_rdm):
-        return 2 * (self.fock_generalized(one_rdm, two_rdm) - torch.t(
-            self.fock_generalized(one_rdm, two_rdm)))
+    def orbital_gradient(self, one_rdm, two_rdm, mo_coeff=None):
+        if mo_coeff is None:
+            int1e_mo = self.int1e_mo
+            int2e_mo = self.int2e_mo
+        else:
+            self.int1e_mo = int1e_transform(self.int1e_ao, mo_coeff)
+            self.int2e_mo = int2e_transform(self.int2e_ao, mo_coeff)
         
-    def update_mo(self, mo_coeff):
-        self.mo_coeff = mo_coeff
+        fock_general = self.fock_generalized(int1e_mo, int2e_mo, one_rdm, two_rdm)
+        return 2 * (fock_general(one_rdm, two_rdm) - torch.t(
+            fock_general(one_rdm, two_rdm)))
