@@ -10,12 +10,13 @@ import numpy as np
 
 import pennylane as qml
 import torch
+from functorch import jacfwd
 
 from auto_oo.oo_energy.oo_energy import OO_energy
 from auto_oo.ansatz.pqc import Parameterized_circuit
 from auto_oo.moldata_pyscf import Moldata_pyscf
 
-def vec_to_skew_symmetric(vector):
+def vector_to_skew_symmetric(vector):
     r"""
     Map a vector to an anti-symmetric matrix with np.tril_indices.
     
@@ -38,6 +39,12 @@ def vec_to_skew_symmetric(vector):
     matrix[tril_indices[0],tril_indices[1]] = vector
     matrix[tril_indices[1],tril_indices[0]] = - vector
     return matrix
+
+def skew_symmetric_to_vector(kappa_matrix):
+    """Return 1D tensor of parameters given anti-symmetric matrix `kappa`"""
+    size = kappa_matrix.size(dim=0)
+    tril_indices = torch.tril_indices(row=size,col=size, offset=-1)
+    return kappa_matrix[tril_indices[0],tril_indices[1]]
 
 class OO_pqc_cost(OO_energy):
     def __init__(self, pqc : Parameterized_circuit, mol : Moldata_pyscf,
@@ -67,11 +74,11 @@ class OO_pqc_cost(OO_energy):
                 self.params_idx = np.append(self.params_idx, [num])
             num +=1
         
-    def energy_from_parameters(self, theta, kappa=None):
+    def energy_from_parameters(self, theta, kappa):
         if kappa is None:
             mo_coeff = self.mo_coeff
         else:
-            mo_coeff = self.get_transformed_mo(kappa)
+            mo_coeff = self.get_transformed_mo(self.mo_coeff, kappa)
         state = self.pqc.ansatz_state(theta)
         one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
         return self.energy_from_mo_coeff(mo_coeff, one_rdm, two_rdm)
@@ -79,18 +86,35 @@ class OO_pqc_cost(OO_energy):
     def kappa_vector_to_matrix(self, kappa):
         kappa_total_vector = torch.zeros(self.nao * (self.nao - 1)//2)
         kappa_total_vector[self.params_idx] = kappa
-        return vec_to_skew_symmetric(kappa_total_vector)
+        return vector_to_skew_symmetric(kappa_total_vector)
+    
+    def kappa_matrix_to_vector(self, kappa_matrix):
+        kappa_total_vector = skew_symmetric_to_vector(kappa_matrix)
+        return kappa_total_vector[self.params_idx]
 
     def kappa_to_mo_coeff(self, kappa):
         kappa_matrix = self.kappa_vector_to_matrix(kappa)
         return torch.linalg.matrix_exp(-kappa_matrix)
 
-    def get_transformed_mo(self, kappa, update=True):
-        mo_coeff = self.mo_coeff @ self.kappa_to_mo_coeff(kappa)
-        if update:
-            self.mo_coeff = mo_coeff
-            self.update_integrals(mo_coeff)
-        return mo_coeff
+    def get_transformed_mo(self, mo_coeff, kappa):
+        mo_coeff_transformed = mo_coeff @ self.kappa_to_mo_coeff(kappa)
+        return mo_coeff_transformed
+    
+    def orbital_gradient_vector_from_parameters(self, theta, kappa):
+        # if kappa is not None:
+        mo_coeff = self.get_transformed_mo(self.mo_coeff, kappa)
+        # self.mo_coeff = mo_coeff
+        self.update_integrals(mo_coeff)
+        
+        state = self.pqc.ansatz_state(theta)
+        one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
+        return self.kappa_matrix_to_vector(
+            self.orbital_gradient(one_rdm, two_rdm))
+    
+    def orbital_parameter_hessian(self, theta, kappa):
+        return jacfwd(
+            self.orbital_gradient_vector_from_parameters,
+            argnums=(0))(theta,kappa)
 
 if __name__ == '__main__':
     from cirq import dirac_notation
@@ -111,17 +135,68 @@ if __name__ == '__main__':
     basis = 'sto-3g'
     mol = Moldata_pyscf(geometry, basis)
 
-    ncas = 2
-    nelecas = 2
+    ncas = 3
+    nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
     pqc = Parameterized_circuit(ncas, nelecas, dev, vqe_singles=False)
     theta = torch.rand_like(pqc.init_zeros())
+    state = pqc.ansatz_state(theta)
+    one_rdm, two_rdm = pqc.get_rdms_from_state(state)
     # theta = pqc.init_zeros()
     oo_pqc = OO_pqc_cost(pqc, mol, ncas, nelecas)
     kappa = torch.zeros(oo_pqc.n_kappa)
-    energy_test = oo_pqc.energy_from_parameters(theta)
+    energy_test = oo_pqc.energy_from_parameters(theta, kappa)
     print("theta:", theta)
-    print("state:", dirac_notation(pqc.ansatz_state(theta).detach().numpy()))
+    print("state:", dirac_notation(state.detach().numpy()))
     print('Expectation value of Hamiltonian:', energy_test.item())
     mol.run_rhf()
     print('HF energy:', mol.hf.e_tot)
+    
+    plt.title('one rdm')
+    plt.imshow(one_rdm)
+    plt.colorbar()
+    plt.show()
+    plt.title('two rdm')
+    plt.imshow(two_rdm.reshape(ncas**2,ncas**2))
+    plt.colorbar()
+    plt.show()
+    from functorch import jacfwd, hessian
+    orbgrad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
+        theta,kappa)
+    orbgrad_auto_2d = oo_pqc.kappa_vector_to_matrix(orbgrad_auto[1])
+    orbgrad_exact = oo_pqc.orbital_gradient(one_rdm, two_rdm)
+    plt.title('automatic diff orbital gradient')
+    plt.imshow(orbgrad_auto_2d)
+    plt.colorbar()
+    plt.show()
+    plt.title('exact orbital gradient')
+    plt.imshow(orbgrad_exact)
+    plt.colorbar()
+    plt.show()
+    
+    orbgrad_auto_flat = orbgrad_auto[1]
+    orbgrad_exact_flat = oo_pqc.kappa_matrix_to_vector(orbgrad_exact)
+
+    
+    orbhess_auto_comp = hessian(oo_pqc.energy_from_parameters,
+                                argnums=(0,1))(theta, kappa)
+    orbhess_auto_kappa_theta = orbhess_auto_comp[0][1]
+    
+    orbhess_exact_kappa_theta = jacfwd(
+        oo_pqc.orbital_gradient_vector_from_parameters,
+        argnums=(0))(theta,kappa)
+    
+    plt.title('kappa-theta hessian automatic diff')
+    plt.imshow(orbhess_auto_kappa_theta)
+    plt.colorbar()
+    plt.show()
+    plt.title('kappa-theta hessian exact autodiff')
+    plt.imshow(orbhess_exact_kappa_theta.t())
+    plt.colorbar()
+    plt.show()
+    
+    
+    
+    
+    
+    

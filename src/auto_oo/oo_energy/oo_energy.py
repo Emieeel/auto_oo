@@ -124,25 +124,30 @@ class OO_energy():
 
     def fock_core(self, int1e_mo, int2e_mo):
         g_tilde = (
-            2 * torch.sum(int2e_mo[:, :, self.occ_idx, self.occ_idx], dim=-1) # p^ i^ i q 
-              - torch.sum(int2e_mo[:, self.occ_idx, self.occ_idx, :], dim=1)) # p^ i^ q i
+            2 * torch.sum(int2e_mo[:, :, self.occ_idx, self.occ_idx],
+                          dim=-1) # p^ i^ i q 
+              - torch.sum(int2e_mo[:, self.occ_idx, self.occ_idx, :],
+                          dim=1)) # p^ i^ q i
         return int1e_mo + g_tilde
     
-    def fock_active(self, int1e_mo, int2e_mo, one_rdm):
+    def fock_active(self, int2e_mo, one_rdm):
         g_tilde = (
         int2e_mo[:,:,:,self.act_idx][:,:,self.act_idx,:]
-        -.5 * torch.permute(int2e_mo[:,:,self.act_idx,:][:,self.act_idx,:,:],(0,3,2,1)))
+        -.5 * torch.permute(int2e_mo[:,:,self.act_idx,:][:,self.act_idx,:,:],
+                            (0,3,2,1)))
         return torch.einsum('wx, pqwx', one_rdm, g_tilde)
     
     def fock_generalized(self, int1e_mo, int2e_mo, one_rdm, two_rdm):
-        fock_C = self.fock_core(int1e_mo, int2e_mo, self.occ_idx)
-        fock_A = self.fock_active(one_rdm, int2e_mo, self.act_idx)
+        fock_C = self.fock_core(int1e_mo, int2e_mo)
+        fock_A = self.fock_active(int2e_mo, one_rdm)
         fock_general = torch.zeros(int1e_mo.shape)
-        fock_general[self.occ_idx,:] = 2 * torch.t(fock_C[:,self.occ_idx] + fock_A[:,self.occ_idx])
+        fock_general[self.occ_idx,:] = 2 * torch.t(
+            fock_C[:,self.occ_idx] + fock_A[:,self.occ_idx])
         fock_general[self.act_idx,:] = torch.einsum(
             'qw,vw->vq',fock_C[:,self.act_idx],one_rdm) + torch.einsum(
             'vwxy,qwxy->vq',
-            two_rdm,int2e_mo[:,:,:,self.act_idx][:,:,self.act_idx,:][:,self.act_idx,:,:])
+            two_rdm,
+            int2e_mo[:,:,:,self.act_idx][:,:,self.act_idx,:][:,self.act_idx,:,:])
         return fock_general
 
     def orbital_gradient(self, one_rdm, two_rdm, mo_coeff=None):
@@ -150,9 +155,23 @@ class OO_energy():
             int1e_mo = self.int1e_mo
             int2e_mo = self.int2e_mo
         else:
-            self.int1e_mo = int1e_transform(self.int1e_ao, mo_coeff)
-            self.int2e_mo = int2e_transform(self.int2e_ao, mo_coeff)
+            int1e_mo = int1e_transform(self.int1e_ao, mo_coeff)
+            int2e_mo = int2e_transform(self.int2e_ao, mo_coeff)
         
         fock_general = self.fock_generalized(int1e_mo, int2e_mo, one_rdm, two_rdm)
-        return 2 * (fock_general(one_rdm, two_rdm) - torch.t(
-            fock_general(one_rdm, two_rdm)))
+        return 2 * (fock_general - torch.t(fock_general))
+    
+    def orbital_hessian(self, one_rdm, two_rdm, mo_coeff=None):
+        if mo_coeff is None:
+            int1e_mo = self.int1e_mo
+            int2e_mo = self.int2e_mo
+        else:
+            int1e_mo = int1e_transform(self.int1e_ao, mo_coeff)
+            int2e_mo = int2e_transform(self.int2e_ao, mo_coeff)
+        
+        
+        
+        
+        
+        
+        
