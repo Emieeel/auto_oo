@@ -107,10 +107,8 @@ def molecular_hamiltonian_coefficients(nuclear_repulsion,
                                        occ_idx = None,
                                        act_idx = None):
     '''
-    Transform full-space restricted orbitals in chemist's notation 
-    to CAS (un)restricted Hamiltonian coefficient's in 
-    (physicist) chemist notation.
-    
+    Transform full-space restricted orbitals to CAS restricted Hamiltonian 
+    coefficient's in chemist notation.
     
     The resulting tensors are ready for openfermion.InteractionOperator, and
     follow the same conventions
@@ -140,39 +138,8 @@ def molecular_hamiltonian_coefficients(nuclear_repulsion,
 
     return E_constant, one_body_coefficients, two_body_coefficients
 
-def molecular_hamiltonian(nuclear_repulsion,
-                          one_body_integrals,
-                          two_body_integrals,
-                          occ_idx = None,
-                          act_idx = None):
-    '''
-    Creates an electronic structure Hamiltonian from zero- one- and two-electron
-    integrals (in restricted form i.e. no spin, and with chemist's index
-    ordering convention)
-    If indices are given, the CAS active space Hamiltonian is constructed.
-    
-    returns: `openfermion.InteractionOperator`: AS (or full-space) Hamiltonian 
-        according to the interleaved-spin convention (alpha-even, beta-odd)
-    '''
-    # Initialize Hamiltonian coefficients.
-    (E_constant,
-     one_body_coefficients,
-     two_body_coefficients) = molecular_hamiltonian_coefficients(
-        nuclear_repulsion,
-        one_body_integrals,
-        two_body_integrals,
-        occ_idx,
-        act_idx)
-                 
-    # Cast to InteractionOperator class and return.
-    molecular_hamiltonian = openfermion.InteractionOperator(
-        E_constant.item(), 
-        one_body_coefficients.detach().numpy(), 
-        two_body_coefficients.detach().numpy())
 
-    return molecular_hamiltonian
-
-def fermionic_cas_hamiltonian(c0, c1, c2, e_pq, e_pqrs, restricted = True):
+def fermionic_cas_hamiltonian(c0, c1, c2, e_pq, e_pqrs):
     r"""
     Generate active space Hamiltonian in FermionOperator form. For now, only works with
     restricted e_pq and e_pqrs, where p,q,r,s are active indices.
@@ -192,10 +159,10 @@ def fermionic_cas_hamiltonian(c0, c1, c2, e_pq, e_pqrs, restricted = True):
     hamiltonian = openfermion.FermionOperator('',c0.item())
     one_body_op = openfermion.FermionOperator()
     for p,q in itertools.product(range(ncas), repeat=2):
-        one_body_op += c1[p,q].item() * e_pq(p,q, restricted)
+        one_body_op += c1[p,q].item() * e_pq[p,q]
     two_body_op = openfermion.FermionOperator()
     for p,q,r,s in itertools.product(range(ncas), repeat=4):
-        two_body_op += c2[p,q,r,s].item() * e_pqrs(p,q,r,s,restricted)
+        two_body_op += c2[p,q,r,s].item() * e_pqrs[p,q,r,s]
     hamiltonian += one_body_op + two_body_op
     return hamiltonian
 
