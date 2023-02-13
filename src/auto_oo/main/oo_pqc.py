@@ -100,25 +100,28 @@ class OO_pqc_cost(OO_energy):
         mo_coeff_transformed = mo_coeff @ self.kappa_to_mo_coeff(kappa)
         return mo_coeff_transformed
     
-    def orbital_gradient_vector_from_parameters(self, theta, kappa):
-        # if kappa is not None:
-        mo_coeff = self.get_transformed_mo(self.mo_coeff, kappa)
-        # self.mo_coeff = mo_coeff
-        self.update_integrals(mo_coeff)
-        
+    def orbital_gradient_vector_from_theta(self, theta):
         state = self.pqc.ansatz_state(theta)
         one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
         return self.kappa_matrix_to_vector(
             self.orbital_gradient(one_rdm, two_rdm))
     
-    def orbital_parameter_hessian(self, theta, kappa):
+    def orbital_theta_hessian(self, theta):
         return jacfwd(
-            self.orbital_gradient_vector_from_parameters,
-            argnums=(0))(theta,kappa)
+            self.orbital_gradient_vector_from_theta)(theta)
+
+    def full_hessian_to_matrix(self, full_hess):
+        tril_indices = torch.tril_indices(row=self.nao, col=self.nao, offset=-1)
+        partial_hess = full_hess[tril_indices[0],tril_indices[1],:,:]
+        reduced_hess = partial_hess[:,tril_indices[0],tril_indices[1]]
+        nonredundant_hess = reduced_hess[self.params_idx,:][:,self.params_idx]
+        return nonredundant_hess
 
 if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
+    
+    torch.set_num_interop_threads(12)
     
     def get_formal_geo(alpha,phi):
         variables = [1.498047, 1.066797, 0.987109, 118.359375] + [alpha, phi]
@@ -138,12 +141,15 @@ if __name__ == '__main__':
     ncas = 3
     nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
-    pqc = Parameterized_circuit(ncas, nelecas, dev, vqe_singles=False)
+    pqc = Parameterized_circuit(ncas, nelecas, dev, add_singles=False)
     theta = torch.rand_like(pqc.init_zeros())
     state = pqc.ansatz_state(theta)
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
     # theta = pqc.init_zeros()
     oo_pqc = OO_pqc_cost(pqc, mol, ncas, nelecas)
+    oo_pqc.mo_coeff = torch.from_numpy(oo_pqc.oao_coeff)
+    oo_pqc.update_integrals(oo_pqc.mo_coeff)
+    
     kappa = torch.zeros(oo_pqc.n_kappa)
     energy_test = oo_pqc.energy_from_parameters(theta, kappa)
     print("theta:", theta)
@@ -160,11 +166,13 @@ if __name__ == '__main__':
     plt.imshow(two_rdm.reshape(ncas**2,ncas**2))
     plt.colorbar()
     plt.show()
-    from functorch import jacfwd, hessian
+    from functorch import hessian
+    import time
     orbgrad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
         theta,kappa)
     orbgrad_auto_2d = oo_pqc.kappa_vector_to_matrix(orbgrad_auto[1])
     orbgrad_exact = oo_pqc.orbital_gradient(one_rdm, two_rdm)
+    
     plt.title('automatic diff orbital gradient')
     plt.imshow(orbgrad_auto_2d)
     plt.colorbar()
@@ -176,15 +184,19 @@ if __name__ == '__main__':
     
     orbgrad_auto_flat = orbgrad_auto[1]
     orbgrad_exact_flat = oo_pqc.kappa_matrix_to_vector(orbgrad_exact)
-
     
+
+    t0 = time.time()
     orbhess_auto_comp = hessian(oo_pqc.energy_from_parameters,
                                 argnums=(0,1))(theta, kappa)
+    # orbhess_auto_comp = torch.autograd.functional.hessian(oo_pqc.energy_from_parameters,
+    #                                                       (theta, kappa))
+    print("time took to calc hess with automatic diff:", time.time()-t0)
     orbhess_auto_kappa_theta = orbhess_auto_comp[0][1]
     
-    orbhess_exact_kappa_theta = jacfwd(
-        oo_pqc.orbital_gradient_vector_from_parameters,
-        argnums=(0))(theta,kappa)
+    t1 = time.time()
+    orbhess_exact_kappa_theta = oo_pqc.orbital_theta_hessian(theta)
+    print("time took to calc mixed hess with exact/automatic took:", time.time()-t1)
     
     plt.title('kappa-theta hessian automatic diff')
     plt.imshow(orbhess_auto_kappa_theta)
@@ -192,6 +204,27 @@ if __name__ == '__main__':
     plt.show()
     plt.title('kappa-theta hessian exact autodiff')
     plt.imshow(orbhess_exact_kappa_theta.t())
+    plt.colorbar()
+    plt.show()
+    
+    orborbhess_auto = orbhess_auto_comp[1][1]
+    t2 = time.time()
+    orborbhess_exact_full = oo_pqc.orbital_hessian(one_rdm, two_rdm)
+    orborbhess_exact = oo_pqc.full_hessian_to_matrix(orborbhess_exact_full)
+    print("time took to calc orb-orb hess with exact method took:", time.time()-t2)
+    
+    plt.title('kappa-kappa hessian automatic diff')
+    plt.imshow(orborbhess_auto)
+    plt.colorbar()
+    plt.show()
+    plt.title('kappa-kappa hessian exact')
+    plt.imshow(orborbhess_exact)
+    plt.colorbar()
+    plt.show()
+    
+    orborb_diff = torch.abs(orborbhess_auto - orborbhess_exact)
+    plt.title('kappa-kappa auto exact diff')
+    plt.imshow(orborb_diff)
     plt.colorbar()
     plt.show()
     

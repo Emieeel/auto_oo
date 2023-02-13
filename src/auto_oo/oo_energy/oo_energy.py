@@ -168,7 +168,49 @@ class OO_energy():
         else:
             int1e_mo = int1e_transform(self.int1e_ao, mo_coeff)
             int2e_mo = int2e_transform(self.int2e_ao, mo_coeff)
+            
+        one_full, two_full = self.full_rdms(one_rdm, two_rdm)
+        y_matrix = self.y_matrix(int2e_mo, two_full)
+        fock_general = self.fock_generalized(int1e_mo, int2e_mo, one_rdm, two_rdm)
+        fock_general_symm =  fock_general + torch.t(fock_general)
         
+        hess0 = 2 * torch.einsum('pr, qs->pqrs', one_full, int1e_mo)
+        hess1 = - torch.einsum('pr, qs->pqrs', fock_general_symm, torch.eye(self.nao))
+        hess2 = 2 * y_matrix
+        
+        hess_permuted0 = hess0 + hess1 + hess2
+        hess_permuted1 = torch.permute(hess_permuted0, (0,1,3,2))
+        hess_permuted2 = torch.permute(hess_permuted0, (1,0,2,3))
+        hess_permuted3 = torch.permute(hess_permuted0, (1,0,3,2))
+        
+        return hess_permuted0 - hess_permuted1 - hess_permuted2 + hess_permuted3
+
+    def full_rdms(self, one_rdm, two_rdm):
+        one_full = torch.zeros((self.nao,self.nao))
+        two_full = torch.zeros((self.nao,self.nao,self.nao,self.nao))
+    
+        one_full[self.occ_idx,self.occ_idx] = 2 * torch.ones(len(self.occ_idx))
+        one_full[np.ix_(self.act_idx,self.act_idx)] = one_rdm
+    
+        two_full[np.ix_(*[self.occ_idx]*4)] = 4 * torch.einsum(
+            'ij,kl->ijkl',*[torch.eye(len(self.occ_idx))]*2) - 2 * torch.einsum(
+            'il,jk->ijkl',*[torch.eye(len(self.occ_idx))]*2)
+        two_full[np.ix_(self.occ_idx,self.occ_idx,self.act_idx,self.act_idx)] = 2 * torch.einsum(
+            'wx,ij->ijwx',one_rdm,torch.eye(len(self.occ_idx)))
+        two_full[np.ix_(self.act_idx,self.act_idx,self.occ_idx,self.occ_idx)] = 2 * torch.einsum(
+            'wx,ij->wxij',one_rdm,torch.eye(len(self.occ_idx)))
+        two_full[np.ix_(self.occ_idx,self.act_idx,self.act_idx,self.occ_idx)] = -torch.einsum(
+            'wx,ij->iwxj',one_rdm,torch.eye(len(self.occ_idx)))
+        two_full[np.ix_(self.act_idx,self.occ_idx,self.occ_idx,self.act_idx)] = -torch.einsum(
+            'wx,ij->xjiw',one_rdm,torch.eye(len(self.occ_idx)))
+        two_full[np.ix_(*[self.act_idx]*4)] = two_rdm
+        return one_full, two_full
+    
+    def y_matrix(self, int2e_mo, two_full):
+        y0 = torch.einsum('pmrn, qmns->pqrs', two_full, int2e_mo)
+        y1 = torch.einsum('pmnr, qmns->pqrs', two_full, int2e_mo)
+        y2 = torch.einsum('prmn, qsmn->pqrs', two_full, int2e_mo)
+        return y0 + y1 + y2
         
         
         

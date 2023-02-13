@@ -105,10 +105,10 @@ def initialize_e_pqrs(ncas, restricted = False):
         for s in range(num_ind)] for r in range(num_ind)]
         for q in range(num_ind)] for p in range(num_ind)]
 
-def uccd_state(theta, dev, wires, s_wires, d_wires, hfstate, vqe_singles):
+def uccd_state(theta, dev, wires, s_wires, d_wires, hfstate, add_singles):
     @qml.qnode(dev, interface='torch', diff_method="backprop")
     def uccd_circuit():
-        if vqe_singles:
+        if add_singles:
             qml.UCCSD(theta, wires, s_wires=s_wires,
                       d_wires=d_wires, init_state=hfstate)
         else:
@@ -117,14 +117,14 @@ def uccd_state(theta, dev, wires, s_wires, d_wires, hfstate, vqe_singles):
     return uccd_circuit()
 
 class Parameterized_circuit():
-    def __init__(self, ncas, nelecas, dev, ansatz_state_fn=None, vqe_singles=False):
+    def __init__(self, ncas, nelecas, dev, ansatz_state_fn=None, add_singles=False):
         self.ncas = ncas
         self.nelecas = nelecas
         self.n_qubits = 2 * ncas
         
         self.dev = dev
         
-        self.vqe_singles = vqe_singles
+        self.add_singles = add_singles
         
         self.e_pq = None
         self.e_pqrs = None
@@ -132,7 +132,7 @@ class Parameterized_circuit():
         if ansatz_state_fn is None:
             self.singles, self.doubles = qml.qchem.excitations(nelecas,
                                                                self.n_qubits)
-            if vqe_singles:
+            if add_singles:
                 self.n_theta = len(self.doubles) + len(self.singles)
             else:
                 self.n_theta = len(self.doubles)
@@ -147,7 +147,7 @@ class Parameterized_circuit():
     def uccd_state(self, theta):
         return uccd_state(theta, 
                           self.dev, self.wires, self.s_wires,
-                          self.d_wires, self.hfstate, self.vqe_singles)
+                          self.d_wires, self.hfstate, self.add_singles)
     
     def init_zeros(self):
         return torch.zeros(self.n_theta)
@@ -195,7 +195,7 @@ if __name__ == '__main__':
     ncas = 2
     nelecas = 2
     dev = qml.device('default.qubit', wires=2*ncas)
-    pqc = Parameterized_circuit(ncas, nelecas, dev, vqe_singles=False)
+    pqc = Parameterized_circuit(ncas, nelecas, dev, add_singles=False)
     theta = torch.rand_like(pqc.init_zeros())
     state = pqc.ansatz_state(theta)
     print("theta = ", theta)
