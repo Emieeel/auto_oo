@@ -10,7 +10,8 @@ import numpy as np
 
 import pennylane as qml
 import torch
-from functorch import jacfwd, hessian
+# from functorch import jacfwd, hessian
+from torch.autograd.functional import jacobian, hessian
 
 from auto_oo.oo_energy.oo_energy import OO_energy
 from auto_oo.ansatz.pqc import Parameterized_circuit
@@ -115,7 +116,8 @@ class OO_pqc_cost(OO_energy):
         return self.energy_from_mo_coeff(mo_coeff, one_rdm, two_rdm)
     
     def circuit_gradient(self, theta):
-        return jacfwd(self.energy_from_parameters)(theta)
+        return jacobian(self.energy_from_parameters, theta)
+        # return jacfwd(self.energy_from_parameters)(theta)
     
     def orbital_gradient(self, theta):
         """Generate analytically the flattened electronic gradient w.r.t. orbital rotation
@@ -126,13 +128,14 @@ class OO_pqc_cost(OO_energy):
             self.analytic_gradient(one_rdm, two_rdm))  
     
     def circuit_circuit_hessian(self, theta):
-        return hessian(self.energy_from_parameters)(theta)
+        return hessian(self.energy_from_parameters,theta)
+        # return hessian(self.energy_from_parameters)(theta)
 
     def orbital_circuit_hessian(self, theta):
         """Generate the mixed orbital-pqc parameter hessian by automatic differentation
         of the analytic orbital gradient"""
-        return jacfwd(
-            self.orbital_gradient)(theta)
+        return jacobian(self.orbital_gradient,theta)
+        # return jacfwd(self.orbital_gradient)(theta)
     
     def orbital_orbital_hessian(self, theta):
         state = self.pqc.ansatz_state(theta)
@@ -176,7 +179,7 @@ if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
     
-    torch.set_num_threads(12)
+    torch.set_num_threads(16)
     
     def get_formal_geo(alpha,phi):
         variables = [1.498047, 1.066797, 0.987109, 118.359375] + [alpha, phi]
@@ -190,15 +193,15 @@ if __name__ == '__main__':
         return geom
     
     geometry = get_formal_geo(140, 80)
-    basis = 'sto-3g'
+    basis = 'cc-pvdz'
     mol = Moldata_pyscf(geometry, basis)
 
-    ncas = 3
-    nelecas = 4
+    ncas = 2
+    nelecas = 2
     dev = qml.device('default.qubit', wires=2*ncas)
     pqc = Parameterized_circuit(ncas, nelecas, dev, add_singles=False)
-    # theta = torch.rand_like(pqc.init_zeros())
-    theta = pqc.init_zeros()
+    theta = torch.rand_like(pqc.init_zeros())
+    # theta = pqc.init_zeros()
     state = pqc.ansatz_state(theta)
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
 
@@ -210,10 +213,10 @@ if __name__ == '__main__':
     # from scipy.stats import ortho_group
     # mo_transform = torch.from_numpy(ortho_group.rvs(mol.nao))
     # oao_mo_coeff = mo_transform
-    oao_mo_coeff = torch.eye(mol.nao)
-    oo_pqc.oao_mo_coeff = oao_mo_coeff
-    print("check if property works:",
-          torch.allclose(oo_pqc.mo_coeff, torch.from_numpy(mol.oao_coeff) @ oao_mo_coeff)     )
+    # oao_mo_coeff = torch.eye(mol.nao)
+    # oo_pqc.oao_mo_coeff = oao_mo_coeff
+    # print("check if property works:",
+    #       torch.allclose(oo_pqc.mo_coeff, torch.from_numpy(mol.oao_coeff) @ oao_mo_coeff)     )
     
 
     
@@ -234,14 +237,17 @@ if __name__ == '__main__':
     plt.colorbar()
     plt.show()
 
-   
+
 
     import time
     t0 = time.time()
-    grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
-        theta,kappa)
-    hess_auto = hessian(oo_pqc.energy_from_parameters,
-                        argnums=(0,1))(theta, kappa)
+    grad_auto = jacobian(oo_pqc.energy_from_parameters, (
+        theta,kappa))
+    # grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
+    #     theta,kappa)
+    hess_auto = hessian(oo_pqc.energy_from_parameters,(theta,kappa))
+    # hess_auto = hessian(oo_pqc.energy_from_parameters,
+    #                     argnums=(0,1))(theta, kappa)
     print("time took to generate everything with auto-differentation:", time.time()-t0)
     
     t1 = time.time()

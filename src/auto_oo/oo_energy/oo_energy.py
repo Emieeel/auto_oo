@@ -6,8 +6,6 @@ Created on Thu Feb  2 11:06:01 2023
 @author: emielkoridon
 """
 
-import itertools
-
 import numpy as np
 
 import torch
@@ -207,13 +205,17 @@ class OO_energy():
         two_full[np.ix_(*[self.occ_idx]*4)] = 4 * torch.einsum(
             'ij,kl->ijkl',*[torch.eye(len(self.occ_idx))]*2) - 2 * torch.einsum(
             'il,jk->ijkl',*[torch.eye(len(self.occ_idx))]*2)
-        two_full[np.ix_(self.occ_idx,self.occ_idx,self.act_idx,self.act_idx)] = 2 * torch.einsum(
+        two_full[np.ix_(self.occ_idx,self.occ_idx,
+                        self.act_idx,self.act_idx)] = 2 * torch.einsum(
             'wx,ij->ijwx',one_rdm,torch.eye(len(self.occ_idx)))
-        two_full[np.ix_(self.act_idx,self.act_idx,self.occ_idx,self.occ_idx)] = 2 * torch.einsum(
+        two_full[np.ix_(self.act_idx,self.act_idx,
+                        self.occ_idx,self.occ_idx)] = 2 * torch.einsum(
             'wx,ij->wxij',one_rdm,torch.eye(len(self.occ_idx)))
-        two_full[np.ix_(self.occ_idx,self.act_idx,self.act_idx,self.occ_idx)] = -torch.einsum(
+        two_full[np.ix_(self.occ_idx,self.act_idx,
+                        self.act_idx,self.occ_idx)] = -torch.einsum(
             'wx,ij->iwxj',one_rdm,torch.eye(len(self.occ_idx)))
-        two_full[np.ix_(self.act_idx,self.occ_idx,self.occ_idx,self.act_idx)] = -torch.einsum(
+        two_full[np.ix_(self.act_idx,self.occ_idx,
+                        self.occ_idx,self.act_idx)] = -torch.einsum(
             'wx,ij->xjiw',one_rdm,torch.eye(len(self.occ_idx)))
         two_full[np.ix_(*[self.act_idx]*4)] = two_rdm
         return one_full, two_full
@@ -223,6 +225,9 @@ class OO_energy():
         y1 = torch.einsum('pmnr, qmns->pqrs', two_full, int2e_mo)
         y2 = torch.einsum('prmn, qsmn->pqrs', two_full, int2e_mo)
         return y0 + y1 + y2
+    
+    def orbital_optimization(self, one_rdm, two_rdm):
+        pass
         
         
         
