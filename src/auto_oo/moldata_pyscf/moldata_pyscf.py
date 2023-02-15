@@ -7,7 +7,7 @@ Created on Fri Apr  1 13:05:15 2022
 """
 
 import numpy as np
-from pyscf import gto, scf, fci, mcscf
+from pyscf import gto, fci, mcscf
 
 def ao_to_oao(ovlp):
     """orthogonal atomic orbitals in terms of atomic orbitals"""
@@ -41,6 +41,8 @@ class Moldata_pyscf():
         self.sa_casscf = None
         
     def get_active_space_idx(self, ncas, nelecas):
+        """Calculate the active spaces indices based on the amount of active
+        orbitals and electrons. Returns three list with orbital indices."""
         # Set active space parameters
         nelecore = self.mol.nelectron - nelecas
         if nelecore % 2 == 1:

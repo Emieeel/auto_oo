@@ -8,4 +8,4 @@ from .main import OO_pqc_cost
 
 from .oo_energy import OO_energy
 
-from .newton_raphson import NewtonOptimizer, NewtonStep
+from .newton_raphson import NewtonStep

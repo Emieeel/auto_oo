@@ -6,18 +6,21 @@ Created on Thu Feb  9 16:10:18 2023
 @author: emielkoridon
 """
 
+import numpy as np
+
 import pennylane as qml
 import torch
 # from functorch import jacfwd, hessian
 from torch.autograd.functional import jacobian, hessian
 
-from auto_oo.oo_energy.oo_energy import OO_energy
+from auto_oo.main.oo_pqc import OO_pqc_cost
 from auto_oo.ansatz.pqc import Parameterized_circuit
 from auto_oo.moldata_pyscf import Moldata_pyscf
 
 
-class OO_pqc_cost(OO_energy):
-    def __init__(self, pqc : Parameterized_circuit, mol : Moldata_pyscf,
+class noisy_OO_pqc_cost(OO_pqc_cost):
+    def __init__(self, 
+                 pqc : Parameterized_circuit, mol : Moldata_pyscf,
                  ncas, nelecas, oao_mo_coeff=None, freeze_active=False):
         """
         Orbital Optimized energy class for extracting energies by computing RDMs
@@ -36,48 +39,14 @@ class OO_pqc_cost(OO_energy):
             freeze_active (default: False):
                 Freeze active-active orbital rotations
         """
-        super().__init__(mol, ncas, nelecas,
+        super().__init__(pqc, mol, ncas, nelecas,
                      oao_mo_coeff=oao_mo_coeff, freeze_active=freeze_active)
-        self.pqc = pqc
-        
-    def energy_from_parameters(self, theta, kappa=None):
-        r"""
-        Get total energy given quantum circuit parameters and orbital transformation parameters.
-        Total energy is computed as:
-
-        .. math::
-            E = E_{\rm nuc} + E_{\rm core} +
-            \sum_{pq}\tilde{h}_{pq} \gamma_{pq} + 
-            \sum_{pqrs} g_{pqrs} \Gamma_{pqrs}
-
-        where :math:`E_{core}` is the mean-field energy of the core (doubly-occupied) orbitals,
-        :math:`\tilde{h}_{pq}` is contains the active one-body terms plus the mean-field
-        interaction of core-active orbitals and :math:`g_{pqrs}` are the active integrals
-        in chemist ordering.
-        """
-        if kappa is None:
-            mo_coeff = self.mo_coeff
-        else:
-            mo_coeff = self.get_transformed_mo(self.mo_coeff, kappa)
-        state = self.pqc.ansatz_state(theta)
-        one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
-        return self.energy_from_mo_coeff(mo_coeff, one_rdm, two_rdm)
     
-    def circuit_gradient(self, theta):
-        """Calculate the electronic gradient w.r.t. circuit parameters"""
+    def noisy_circuit_gradient(self, theta):
         return jacobian(self.energy_from_parameters, theta)
         # return jacfwd(self.energy_from_parameters)(theta)
     
-    def orbital_gradient(self, theta):
-        """Generate analytically the flattened electronic gradient w.r.t. orbital rotation
-        parameters for a given set of circuit parameters"""
-        state = self.pqc.ansatz_state(theta)
-        one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
-        return self.kappa_matrix_to_vector(
-            self.analytic_gradient(one_rdm, two_rdm))  
-    
-    def circuit_circuit_hessian(self, theta):
-        """Calculate the electronic hessian w.r.t circuit parameters"""
+    def noisy_circuit_circuit_hessian(self, theta):
         return hessian(self.energy_from_parameters,theta)
         # return hessian(self.energy_from_parameters)(theta)
 
@@ -86,27 +55,7 @@ class OO_pqc_cost(OO_energy):
         of the analytic orbital gradient"""
         return jacobian(self.orbital_gradient,theta)
         # return jacfwd(self.orbital_gradient)(theta)
-    
-    def orbital_orbital_hessian(self, theta):
-        """Generate the electronic Hessian w.r.t. orbital rotations"""
-        state = self.pqc.ansatz_state(theta)
-        one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
-        return self.full_hessian_to_matrix(
-            self.analytic_hessian(one_rdm, two_rdm))
-    
-    def full_gradient(self, theta):
-        """Return the composite gradient of circuit parameters and orbital rotations"""
-        return torch.cat((self.circuit_gradient(theta), self.orbital_gradient(theta)))
-    
-    def full_hessian(self, theta):
-        """Return the composte hessian of circuit parameters and orbital rotations"""
-        hessian_vqe_vqe = self.circuit_circuit_hessian(theta)
-        hessian_vqe_oo = self.orbital_circuit_hessian(theta)
-        hessian_oo_oo = self.orbital_orbital_hessian(theta)
-        hessian = torch.cat((
-                    torch.cat((hessian_vqe_vqe, hessian_vqe_oo.t()), dim=1),
-                    torch.cat((hessian_vqe_oo, hessian_oo_oo), dim=1)), dim = 0)
-        return hessian
+
 
 if __name__ == '__main__':
     from cirq import dirac_notation
