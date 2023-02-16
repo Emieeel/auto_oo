@@ -22,8 +22,7 @@ dependencies = [
     "cirq",
     "openfermion",
     "pennylane",
-    "pyscf",
-    "pytorch"
+    "pyscf"
 ]
 
 [project.urls]
