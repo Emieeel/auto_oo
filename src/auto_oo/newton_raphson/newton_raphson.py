@@ -123,7 +123,7 @@ class NewtonStep():
         hessian_inv = whessian @ torch.diag(1/vhessian) @ torch.t(whessian)
         
         dp = - (hessian_inv @ gradient)
-        return dp, vhessian[0].item()
+        return dp, lowest_eigenvalue
     
     def backtracking(self, objective_fn, parameters, dp, gradient):
         r"""

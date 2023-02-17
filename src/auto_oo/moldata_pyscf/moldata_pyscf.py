@@ -72,27 +72,29 @@ class Moldata_pyscf():
         self.fci.nroots = n_roots                                    
         self.fci.kernel(verbose = verbose)
         
-    def run_casci(self, ncas, nelecas, n_roots=1, mo=None, fix_singlet=1):
+    def run_casci(self, ncas, nelecas, n_roots=1, mo=None, fix_singlet=1, verbose=0):
         """Run PySCF CASCI"""
         self.run_rhf()
         self.casci = self.hf.CASCI(ncas, nelecas)
         self.casci.fcisolver.nroots = n_roots
         if fix_singlet:
             self.casci.fix_spin_(shift=1.5,ss=0)
+        self.casci.verbose = verbose
         if mo is not None:
             self.casci.kernel(mo)
         else:
             self.casci.kernel()
         
-    def run_casscf(self, ncas, nelecas, fix_singlet=1):
+    def run_casscf(self, ncas, nelecas, fix_singlet=1, verbose=0):
         """Run PySCF CASSCF"""
         self.run_rhf()
         self.casscf = mcscf.CASSCF(self.hf, ncas, nelecas)
         if fix_singlet:
             self.casscf.fix_spin_(ss=0)
+        self.casscf.verbose = verbose
         self.casscf.kernel()
     
-    def run_sa_casscf(self, ncas, nelecas, fix_singlet=1):
+    def run_sa_casscf(self, ncas, nelecas, fix_singlet=1, verbose=0):
         """Run PySCF SA-CASSCF"""
         self.run_rhf()
         self.sa_casscf = mcscf.CASSCF(self.hf, ncas, nelecas)
@@ -100,6 +102,7 @@ class Moldata_pyscf():
         if fix_singlet:
             self.sa_casscf.fcisolver.spin = 0
             self.sa_casscf.fix_spin_(ss=0)
+        self.sa_casscf.verbose = verbose
         self.sa_casscf.kernel()
        
     

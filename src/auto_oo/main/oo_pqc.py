@@ -8,12 +8,14 @@ Created on Thu Feb  9 16:10:18 2023
 
 import pennylane as qml
 import torch
-# from functorch import jacfwd, hessian
-from torch.autograd.functional import jacobian, hessian
+from functorch import jacfwd
+from functorch import hessian
+# from torch.autograd.functional import jacobian, hessian
 
 from auto_oo.oo_energy.oo_energy import OO_energy
 from auto_oo.ansatz.pqc import Parameterized_circuit
-from auto_oo.moldata_pyscf import Moldata_pyscf
+from auto_oo.moldata_pyscf.moldata_pyscf import Moldata_pyscf
+from auto_oo.newton_raphson.newton_raphson import NewtonStep
 
 
 class OO_pqc_cost(OO_energy):
@@ -65,8 +67,8 @@ class OO_pqc_cost(OO_energy):
     
     def circuit_gradient(self, theta):
         """Calculate the electronic gradient w.r.t. circuit parameters"""
-        return jacobian(self.energy_from_parameters, theta)
-        # return jacfwd(self.energy_from_parameters)(theta)
+        # return jacobian(self.energy_from_parameters, theta)
+        return jacfwd(self.energy_from_parameters)(theta)
     
     def orbital_gradient(self, theta):
         """Generate analytically the flattened electronic gradient w.r.t. orbital rotation
@@ -78,14 +80,14 @@ class OO_pqc_cost(OO_energy):
     
     def circuit_circuit_hessian(self, theta):
         """Calculate the electronic hessian w.r.t circuit parameters"""
-        return hessian(self.energy_from_parameters,theta)
-        # return hessian(self.energy_from_parameters)(theta)
+        # return hessian(self.energy_from_parameters,theta)
+        return hessian(self.energy_from_parameters)(theta)
 
     def orbital_circuit_hessian(self, theta):
         """Generate the mixed orbital-pqc parameter hessian by automatic differentation
         of the analytic orbital gradient"""
-        return jacobian(self.orbital_gradient,theta)
-        # return jacfwd(self.orbital_gradient)(theta)
+        # return jacobian(self.orbital_gradient,theta)
+        return jacfwd(self.orbital_gradient)(theta)
     
     def orbital_orbital_hessian(self, theta):
         """Generate the electronic Hessian w.r.t. orbital rotations"""
@@ -107,6 +109,55 @@ class OO_pqc_cost(OO_energy):
                     torch.cat((hessian_vqe_vqe, hessian_vqe_oo.t()), dim=1),
                     torch.cat((hessian_vqe_oo, hessian_oo_oo), dim=1)), dim = 0)
         return hessian
+    
+    def full_optimization(self, theta_init, max_iterations=50, conv_tol=1e-10, verbose=0, **kwargs):
+        opt = NewtonStep(verbose=verbose, **kwargs)
+        energy_init = self.energy_from_parameters(theta_init).item()
+        if verbose is not None:
+            print(f'iter = 000, energy = {energy_init:.12f}')
+    
+        theta_l = []
+        kappa_l = []
+        oao_mo_coeff_l = []
+        energy_l = []
+        hess_eig_l = []
+        
+        theta = theta_init.detach().clone()
+        for n in range(max_iterations):
+    
+            kappa = torch.zeros(self.n_kappa)
+    
+            gradient = self.full_gradient(theta)
+            hessian = self.full_hessian(theta)
+    
+            new_theta_kappa, hess_eig = opt.damped_newton_step(
+                self.energy_from_parameters, (theta, kappa), gradient, hessian)
+            
+            hess_eig_l.append(hess_eig)
+            
+            theta = new_theta_kappa[0]
+            kappa = new_theta_kappa[1]
+    
+            theta_l.append(theta.detach().clone())
+            kappa_l.append(kappa.detach().clone())
+    
+            self.oao_mo_coeff = self.oao_mo_coeff @ self.kappa_to_mo_coeff(kappa)
+    
+            oao_mo_coeff_l.append(self.oao_mo_coeff.detach().clone())
+
+            energy = self.energy_from_parameters(theta).item()
+            energy_l.append(energy)
+            
+            if verbose is not None:
+                print(f'iter = {n+1:03}, energy = {energy:.12f}')
+            if n > 1:
+                if (abs(energy_l[-1] - energy_l[-2]) < conv_tol):
+                    if verbose is not None:
+                        print("optimization finished.")
+                        print("E_fin =", energy_l[-1])
+                    break
+        
+        return energy_l, theta_l, kappa_l, oao_mo_coeff_l, hess_eig_l
 
 if __name__ == '__main__':
     from cirq import dirac_notation
@@ -174,10 +225,10 @@ if __name__ == '__main__':
 
     import time
     t0 = time.time()
-    grad_auto = jacobian(oo_pqc.energy_from_parameters, (
-        theta,kappa))
-    # grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
-    #     theta,kappa)
+    # grad_auto = jacobian(oo_pqc.energy_from_parameters, (
+    #     theta,kappa))
+    grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
+        theta,kappa)
     hess_auto = hessian(oo_pqc.energy_from_parameters,(theta,kappa))
     # hess_auto = hessian(oo_pqc.energy_from_parameters,
     #                     argnums=(0,1))(theta, kappa)

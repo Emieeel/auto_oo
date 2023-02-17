@@ -6,6 +6,6 @@ from .moldata_pyscf import Moldata_pyscf
 
 from .main import OO_pqc_cost
 
-from .oo_energy import OO_energy
+from .oo_energy import OO_energy, mo_ao_to_mo_oao
 
 from .newton_raphson import NewtonStep

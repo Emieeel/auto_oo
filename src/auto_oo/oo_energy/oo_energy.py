@@ -133,7 +133,7 @@ class OO_energy():
         self.nao = mol.nao
 
         if oao_mo_coeff is None:
-            print("Starting with canonical HF MOs")
+            # print("Initialized with canonical HF MOs")
             mol.run_rhf()
             self.oao_mo_coeff = torch.from_numpy(
                 mo_ao_to_mo_oao(mol.hf.mo_coeff, mol.overlap))
@@ -141,7 +141,7 @@ class OO_energy():
             if type(oao_mo_coeff) == np.ndarray:
                 self.oao_mo_coeff = torch.from_numpy(oao_mo_coeff)
             else:
-                self.oao_mo_coeff = oao_mo_coeff
+                self.oao_mo_coeff = oao_mo_coeff.detach().clone()
 
         # Set active space parameters
         self.ncas = ncas
