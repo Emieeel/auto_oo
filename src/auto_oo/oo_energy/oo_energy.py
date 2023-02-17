@@ -364,9 +364,9 @@ class OO_energy():
 if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
-    
-    torch.set_num_threads(12)
-    
+
+    # torch.set_num_threads(12)
+
     def get_formal_geo(alpha,phi):
         variables = [1.498047, 1.066797, 0.987109, 118.359375] + [alpha, phi]
         geom = """
@@ -377,14 +377,14 @@ if __name__ == '__main__':
                         H 1 {2}  2 {4} 3 {5}
                         """.format(*variables)
         return geom
-    
+
     geometry = get_formal_geo(140, 80)
     basis = 'cc-pvdz'
     mol = Moldata_pyscf(geometry, basis)
 
     ncas = 3
     nelecas = 4
-    
+
     one_rdm = torch.Tensor(
        [[ 1.9947e+00,  2.9425e-02, -1.4976e-17],
         [ 2.9425e-02,  1.7815e+00,  1.0134e-16],

@@ -19,7 +19,7 @@ from auto_oo.moldata_pyscf import Moldata_pyscf
 
 
 class noisy_OO_pqc_cost(OO_pqc_cost):
-    def __init__(self, 
+    def __init__(self,
                  pqc : Parameterized_circuit, mol : Moldata_pyscf,
                  ncas, nelecas, oao_mo_coeff=None, freeze_active=False):
         """
@@ -42,20 +42,39 @@ class noisy_OO_pqc_cost(OO_pqc_cost):
         super().__init__(pqc, mol, ncas, nelecas,
                      oao_mo_coeff=oao_mo_coeff, freeze_active=freeze_active)
     
-    def noisy_circuit_gradient(self, theta):
-        return jacobian(self.energy_from_parameters, theta)
-        # return jacfwd(self.energy_from_parameters)(theta)
+    def noisy_circuit_gradient(self, theta, variance):
+        exact_gradient = self.circuit_gradient(theta)
+        noisy_gradient = exact_gradient + (variance**0.5)*torch.randn_like(
+            exact_gradient)
+        return noisy_gradient
     
-    def noisy_circuit_circuit_hessian(self, theta):
-        return hessian(self.energy_from_parameters,theta)
-        # return hessian(self.energy_from_parameters)(theta)
+    def noisy_circuit_circuit_hessian(self, theta, variance):
+        exact_hessian = self.circuit_circuit_hessian(theta)
+        noisy_hessian = exact_hessian + (variance**0.5)*torch.randn_like(
+            exact_hessian)
+        return noisy_hessian
 
-    def orbital_circuit_hessian(self, theta):
+    def noisy_orbital_circuit_hessian(self, theta, variance):
         """Generate the mixed orbital-pqc parameter hessian by automatic differentation
         of the analytic orbital gradient"""
-        return jacobian(self.orbital_gradient,theta)
-        # return jacfwd(self.orbital_gradient)(theta)
-
+        exact_mixed_hessian = self.orbital_circuit_hessian(theta)
+        noisy_mixed_hessian = exact_mixed_hessian + (
+            variance**0.5)*torch.randn_like(
+            exact_mixed_hessian)
+        return noisy_mixed_hessian
+    
+    def full_noisy_gradient(self, theta, variance):
+        return torch.cat((self.noisy_circuit_gradient(theta, variance),
+                          self.orbital_gradient(theta)))
+        
+    def full_noisy_hessian(self, theta, variance):
+        hessian_vqe_vqe = self.noisy_circuit_circuit_hessian(theta, variance)
+        hessian_vqe_oo = self.noisy_orbital_circuit_hessian(theta, variance)
+        hessian_oo_oo = self.orbital_orbital_hessian(theta)
+        hessian = torch.cat((
+                    torch.cat((hessian_vqe_vqe, hessian_vqe_oo.t()), dim=1),
+                    torch.cat((hessian_vqe_oo, hessian_oo_oo), dim=1)), dim = 0)
+        return hessian
 
 if __name__ == '__main__':
     from cirq import dirac_notation
@@ -87,8 +106,8 @@ if __name__ == '__main__':
     state = pqc.ansatz_state(theta)
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
 
-    
-    oo_pqc = OO_pqc_cost(pqc, mol, ncas, nelecas)#, oao_mo_coeff = oao_mo_coeff)
+    variance = 0.1
+    oo_pqc = noisy_OO_pqc_cost(pqc, mol, ncas, nelecas)#, oao_mo_coeff = oao_mo_coeff)
     
     
     # mo_coeff = torch.from_numpy(mol.oao_coeff)
@@ -120,7 +139,9 @@ if __name__ == '__main__':
     plt.show()
 
 
-
+    
+    
+    
     import time
     t0 = time.time()
     grad_auto = jacobian(oo_pqc.energy_from_parameters, (
@@ -133,15 +154,37 @@ if __name__ == '__main__':
     print("time took to generate everything with auto-differentation:", time.time()-t0)
     
     t1 = time.time()
-    print("should all be True:",
-          torch.allclose(grad_auto[0], oo_pqc.circuit_gradient(theta)),
-          torch.allclose(grad_auto[1], oo_pqc.orbital_gradient(theta)),
-          torch.allclose(hess_auto[0][0], oo_pqc.circuit_circuit_hessian(theta)),
-          torch.allclose(hess_auto[1][0], oo_pqc.orbital_circuit_hessian(theta)),
-          torch.allclose(hess_auto[1][1], oo_pqc.orbital_orbital_hessian(theta)))
-    print("time took to generate full hessian but orbital part analytically:",
+    noisy_C = oo_pqc.noisy_circuit_gradient(
+        theta, variance)
+    noisy_CC = oo_pqc.noisy_circuit_circuit_hessian(
+        theta, variance)
+    noisy_CO = oo_pqc.noisy_orbital_circuit_hessian(
+        theta, variance)
+    C_diff = grad_auto[0] - noisy_C
+    CC_diff = hess_auto[0][0] - noisy_CC
+    CO_diff = hess_auto[1][0] - noisy_CO
+    print("Sum of differences:\n")
+    print("gradient C:",
+          torch.sum(C_diff).item(),
+          "\nhess CC:",
+          torch.sum(CC_diff).item(),
+          "\nhess CO:",
+          torch.sum(CO_diff).item())
+    print("\ntime took to generate full hessian but orbital part analytically:",
           time.time()-t1)
     
+    plt.title('circuit gradient diff with noise')
+    plt.imshow(C_diff.reshape(2,2))
+    plt.colorbar()
+    plt.show()
+    plt.title('CC hessian diff with noise')
+    plt.imshow(CC_diff)
+    plt.colorbar()
+    plt.show()
+    plt.title('CO hessian diff with noise')
+    plt.imshow(CO_diff)
+    plt.colorbar()
+    plt.show()
     
     
     # orbgrad_auto_2d = oo_pqc.kappa_vector_to_matrix(orbgrad_auto[1])

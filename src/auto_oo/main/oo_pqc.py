@@ -74,7 +74,7 @@ class OO_pqc_cost(OO_energy):
         state = self.pqc.ansatz_state(theta)
         one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
         return self.kappa_matrix_to_vector(
-            self.analytic_gradient(one_rdm, two_rdm))  
+            self.analytic_gradient(one_rdm, two_rdm))
     
     def circuit_circuit_hessian(self, theta):
         """Calculate the electronic hessian w.r.t circuit parameters"""
