@@ -13,7 +13,7 @@ import torch
 # from functorch import jacfwd, hessian
 from torch.autograd.functional import jacobian, hessian
 
-from auto_oo.main.oo_pqc import OO_pqc_cost
+from auto_oo.oo_pqc.oo_pqc import OO_pqc_cost
 from auto_oo.ansatz.pqc import Parameterized_circuit
 from auto_oo.moldata_pyscf import Moldata_pyscf
 
