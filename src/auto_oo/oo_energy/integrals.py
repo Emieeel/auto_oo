@@ -159,10 +159,10 @@ def fermionic_cas_hamiltonian(c0, c1, c2, e_pq, e_pqrs):
     hamiltonian = openfermion.FermionOperator('',c0.item())
     one_body_op = openfermion.FermionOperator()
     for p,q in itertools.product(range(ncas), repeat=2):
-        one_body_op += c1[p,q].item() * e_pq[p,q]
+        one_body_op += c1[p,q].item() * e_pq[p][q]
     two_body_op = openfermion.FermionOperator()
     for p,q,r,s in itertools.product(range(ncas), repeat=4):
-        two_body_op += c2[p,q,r,s].item() * e_pqrs[p,q,r,s]
+        two_body_op += c2[p,q,r,s].item() * e_pqrs[p][q][r][s]
     hamiltonian += one_body_op + two_body_op
     return hamiltonian
 
