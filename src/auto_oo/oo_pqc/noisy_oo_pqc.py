@@ -15,7 +15,8 @@ from torch.autograd.functional import jacobian, hessian
 
 from auto_oo.oo_pqc.oo_pqc import OO_pqc_cost
 from auto_oo.ansatz.pqc import Parameterized_circuit
-from auto_oo.moldata_pyscf import Moldata_pyscf
+from auto_oo.moldata_pyscf.moldata_pyscf import Moldata_pyscf
+from auto_oo.newton_raphson.newton_raphson import NewtonStep
 
 
 class noisy_OO_pqc_cost(OO_pqc_cost):
@@ -75,6 +76,55 @@ class noisy_OO_pqc_cost(OO_pqc_cost):
                     torch.cat((hessian_vqe_vqe, hessian_vqe_oo.t()), dim=1),
                     torch.cat((hessian_vqe_oo, hessian_oo_oo), dim=1)), dim = 0)
         return hessian
+    
+    def full_noisy_optimization(self, theta_init, max_iterations=50, conv_tol=1e-10, verbose=0, **kwargs):
+        opt = NewtonStep(verbose=verbose, **kwargs)
+        energy_init = self.energy_from_parameters(theta_init).item()
+        if verbose is not None:
+            print(f'iter = 000, energy = {energy_init:.12f}')
+    
+        theta_l = []
+        kappa_l = []
+        oao_mo_coeff_l = []
+        energy_l = []
+        hess_eig_l = []
+        
+        theta = theta_init.detach().clone()
+        for n in range(max_iterations):
+    
+            kappa = torch.zeros(self.n_kappa)
+    
+            gradient = self.full_noisy_gradient(theta)
+            hessian = self.full_noisy_hessian(theta)
+    
+            new_theta_kappa, hess_eig = opt.damped_newton_step(
+                self.energy_from_parameters, (theta, kappa), gradient, hessian)
+            
+            hess_eig_l.append(hess_eig)
+            
+            theta = new_theta_kappa[0]
+            kappa = new_theta_kappa[1]
+    
+            theta_l.append(theta.detach().clone())
+            kappa_l.append(kappa.detach().clone())
+    
+            self.oao_mo_coeff = self.oao_mo_coeff @ self.kappa_to_mo_coeff(kappa)
+    
+            oao_mo_coeff_l.append(self.oao_mo_coeff.detach().clone())
+
+            energy = self.energy_from_parameters(theta).item()
+            energy_l.append(energy)
+            
+            if verbose is not None:
+                print(f'iter = {n+1:03}, energy = {energy:.12f}')
+            if n > 1:
+                if (abs(energy_l[-1] - energy_l[-2]) < conv_tol):
+                    if verbose is not None:
+                        print("optimization finished.")
+                        print("E_fin =", energy_l[-1])
+                    break
+        
+        return energy_l, theta_l, kappa_l, oao_mo_coeff_l, hess_eig_l
 
 if __name__ == '__main__':
     from cirq import dirac_notation
