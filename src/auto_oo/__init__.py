@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
-from .ansatz import Parameterized_circuit, uccd_state
+from .ansatz import (Parameterized_circuit,
+                     Noisy_parameterized_circuit,
+                     uccd_state)
 
 from .moldata_pyscf import Moldata_pyscf
 

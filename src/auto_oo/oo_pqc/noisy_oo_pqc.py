@@ -6,8 +6,6 @@ Created on Thu Feb  9 16:10:18 2023
 @author: emielkoridon
 """
 
-import numpy as np
-
 import pennylane as qml
 import torch
 # from functorch import jacfwd, hessian
@@ -49,6 +47,12 @@ class noisy_OO_pqc_cost(OO_pqc_cost):
             exact_gradient)
         return noisy_gradient
     
+    def noisy_orbital_gradient(self, theta, variance):
+        exact_gradient = self.orbital_gradient(theta)
+        noisy_gradient = exact_gradient + (variance**0.5)*torch.randn_like(
+            exact_gradient)
+        return noisy_gradient
+    
     def noisy_circuit_circuit_hessian(self, theta, variance):
         exact_hessian = self.circuit_circuit_hessian(theta)
         noisy_hessian = exact_hessian + (variance**0.5)*torch.randn_like(
@@ -56,25 +60,30 @@ class noisy_OO_pqc_cost(OO_pqc_cost):
         return noisy_hessian
 
     def noisy_orbital_circuit_hessian(self, theta, variance):
-        """Generate the mixed orbital-pqc parameter hessian by automatic differentation
-        of the analytic orbital gradient"""
         exact_mixed_hessian = self.orbital_circuit_hessian(theta)
         noisy_mixed_hessian = exact_mixed_hessian + (
             variance**0.5)*torch.randn_like(
             exact_mixed_hessian)
         return noisy_mixed_hessian
     
+    def noisy_orbital_orbital_hessian(self, theta, variance):
+        exact_orbital_orbital_hessian = self.orbital_orbital_hessian(theta)
+        noisy_orbital_orbital_hessian = exact_orbital_orbital_hessian + (
+            variance**0.5)*torch.randn_like(
+            exact_orbital_orbital_hessian)
+        return noisy_orbital_orbital_hessian
+    
     def full_noisy_gradient(self, theta, variance):
         return torch.cat((self.noisy_circuit_gradient(theta, variance),
-                          self.orbital_gradient(theta)))
+                          self.noisy_orbital_gradient(theta, variance)))
         
     def full_noisy_hessian(self, theta, variance):
         hessian_vqe_vqe = self.noisy_circuit_circuit_hessian(theta, variance)
         hessian_vqe_oo = self.noisy_orbital_circuit_hessian(theta, variance)
-        hessian_oo_oo = self.orbital_orbital_hessian(theta)
+        hessian_oo_oo = self.noisy_orbital_orbital_hessian(theta, variance)
         hessian = torch.cat((
-                    torch.cat((hessian_vqe_vqe, hessian_vqe_oo.t()), dim=1),
-                    torch.cat((hessian_vqe_oo, hessian_oo_oo), dim=1)), dim = 0)
+            torch.cat((hessian_vqe_vqe, hessian_vqe_oo.t()), dim=1),
+            torch.cat((hessian_vqe_oo, hessian_oo_oo), dim=1)), dim = 0)
         return hessian
     
     def full_noisy_optimization(self, theta_init, max_iterations=50, conv_tol=1e-10, verbose=0, **kwargs):
