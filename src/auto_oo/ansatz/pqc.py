@@ -19,7 +19,7 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=UserWarning)
 
 
-def e_pq(p, q, restricted=True):
+def e_pq(p, q, restricted=True, up_then_down=False):
     r"""
     Can generate either spin-unrestricted single excitation operator:
     
@@ -33,13 +33,19 @@ def e_pq(p, q, restricted=True):
     where :math:`p` and :math:`q` are spatial indices.
     """
     if restricted:
-        return (openfermion.FermionOperator(f'{2*p}^ {2*q}') + 
-                openfermion.FermionOperator(f'{2*p+1}^ {2*q+1}'))
+        operator = (openfermion.FermionOperator(f'{2*p}^ {2*q}') + 
+                    openfermion.FermionOperator(f'{2*p+1}^ {2*q+1}'))
 
     else:
-        return openfermion.FermionOperator(f'{p}^ {q}')
-
-def e_pqrs(p, q, r, s, restricted=True):
+        operator = openfermion.FermionOperator(f'{p}^ {q}')
+    # if up_then_down:
+    #     return openfermion.transforms.reorder(
+    #         operator,openfermion.utils.up_then_down)
+    # else:
+    return operator
+        
+        
+def e_pqrs(p, q, r, s, restricted=True, up_then_down=False):
     r"""
     Can generate either spin-unrestricted double excitation operator:
     
@@ -59,13 +65,18 @@ def e_pqrs(p, q, r, s, restricted=True):
     Hamiltonian or to obtain the two-electron RDM.
     """
     if restricted:
-        operator = e_pq(p, q, restricted) * e_pq(r, s, restricted)
+        operator = e_pq(p, q, restricted, up_then_down) * e_pq(
+            r, s, restricted, up_then_down)
         if q == r:
-            operator += - e_pq(p, s, restricted)
-        return operator
+            operator += - e_pq(p, s, restricted, up_then_down)
     else:
-        return openfermion.FermionOperator(f'{p}^ {q}^ {r} {s}')
-
+        operator = openfermion.FermionOperator(f'{p}^ {q}^ {r} {s}')
+    # if up_then_down:
+    #     return openfermion.transforms.reorder(
+    #         operator,openfermion.utils.up_then_down)
+    # else:
+    return operator
+    
 
 def scipy_csc_to_torch(scipy_csc, dtype=torch.complex128):
     """ Convert a scipy sparse CSC matrix to pytorch sparse tensor.
@@ -82,7 +93,7 @@ def scipy_csc_to_torch(scipy_csc, dtype=torch.complex128):
         torch.tensor(row_indices, dtype=torch.int64),
         torch.tensor(values), dtype=dtype, size=size).to_dense().detach()
 
-def initialize_e_pq(ncas, restricted = False):
+def initialize_e_pq(ncas, restricted=True, up_then_down=False):
     """Initialize full e_pq operator in pytorch CSC sparse format"""
     if restricted:
         num_ind = ncas
@@ -90,10 +101,10 @@ def initialize_e_pq(ncas, restricted = False):
         num_ind = 2 * ncas
     return [[scipy_csc_to_torch(
         openfermion.get_sparse_operator(
-            e_pq(p,q,restricted), n_qubits=2*ncas))
+            e_pq(p,q,restricted, up_then_down), n_qubits=2*ncas))
         for q in range(num_ind)] for p in range(num_ind)]
 
-def initialize_e_pqrs(ncas, restricted = False):
+def initialize_e_pqrs(ncas, restricted = True, up_then_down=False):
     """Initialize full e_pqrs operator in pytorch CSC sparse format"""
     if restricted:
         num_ind = ncas
@@ -101,7 +112,7 @@ def initialize_e_pqrs(ncas, restricted = False):
         num_ind = 2 * ncas
     return [[[[scipy_csc_to_torch(
         openfermion.get_sparse_operator(
-            e_pqrs(p,q,r,s,restricted), n_qubits=2*ncas))
+            e_pqrs(p,q,r,s,restricted,up_then_down), n_qubits=2*ncas))
         for s in range(num_ind)] for r in range(num_ind)]
         for q in range(num_ind)] for p in range(num_ind)]
 
@@ -116,41 +127,67 @@ def uccd_state(theta, dev, wires, s_wires, d_wires, hfstate, add_singles):
         return qml.state()
     return uccd_circuit()
 
+def gatefabric_state(theta, dev, wires, hfstate):
+    @qml.qnode(dev, interface='torch', diff_method='backprop')
+    def gatefabric_circuit():
+        qml.GateFabric(theta,
+                       wires=wires, init_state=hfstate, include_pi=False)
+        return qml.state()
+    return gatefabric_circuit()
+
 class Parameterized_circuit():
-    def __init__(self, ncas, nelecas, dev, ansatz_state_fn=None, add_singles=False):
+    def __init__(self, ncas, nelecas, dev, ansatz='ucc', n_layers=3, add_singles=False):
+        """ Parameterized quantum circuit class"""
         self.ncas = ncas
         self.nelecas = nelecas
         self.n_qubits = 2 * ncas
-        
+
         self.dev = dev
-        
         self.add_singles = add_singles
-        
+
         self.e_pq = None
         self.e_pqrs = None
-        
-        if ansatz_state_fn is None:
+
+        if ansatz == 'ucc':
+            self.up_then_down = False
             self.singles, self.doubles = qml.qchem.excitations(nelecas,
                                                                self.n_qubits)
             if add_singles:
-                self.n_theta = len(self.doubles) + len(self.singles)
+                self.theta_shape = len(self.doubles) + len(self.singles)
             else:
-                self.n_theta = len(self.doubles)
+                self.theta_shape = len(self.doubles)
             self.s_wires, self.d_wires = qml.qchem.excitations_to_wires(
                 self.singles, self.doubles)
             self.hfstate = qml.qchem.hf_state(nelecas, self.n_qubits)
             self.wires = range(self.n_qubits)
             self.ansatz_state = self.uccd_state
-        else:
-            self.ansatz_state = ansatz_state_fn
 
+        elif ansatz == 'np_fabric':
+            self.n_layers = n_layers
+            self.up_then_down = True
+            self.wires = list(range(self.n_qubits))
+            self.hfstate = qml.qchem.hf_state(nelecas, self.n_qubits)
+            self.theta_shape = qml.GateFabric.shape(self.n_layers, len(
+                self.wires))
+            self.ansatz_state = self.gatefabric_state
+            
+            
+        else:
+            self.ansatz_state = ansatz
+        
+        
+        
     def uccd_state(self, theta):
         return uccd_state(theta, 
                           self.dev, self.wires, self.s_wires,
                           self.d_wires, self.hfstate, self.add_singles)
     
+    def gatefabric_state(self, theta):
+        return gatefabric_state(theta, self.dev, self.wires, self.hfstate)
+    
+    
     def init_zeros(self):
-        return torch.zeros(self.n_theta)
+        return torch.zeros(self.theta_shape)
     
     def get_rdms_from_state(self, state, restricted=True):
         r"""
@@ -183,19 +220,23 @@ class Parameterized_circuit():
         
     def init_e_pq(self, restricted=True):
         if self.e_pq is None:
-            self.e_pq = initialize_e_pq(self.ncas, restricted)
+            self.e_pq = initialize_e_pq(self.ncas, restricted,
+                                        self.up_then_down)
 
     def init_e_pqrs(self, restricted=True):
         if self.e_pqrs is None:
-            self.e_pqrs = initialize_e_pqrs(self.ncas, restricted)
+            self.e_pqrs = initialize_e_pqrs(self.ncas, restricted,
+                                            self.up_then_down)
             
 if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
+    
     ncas = 2
     nelecas = 2
     dev = qml.device('default.qubit', wires=2*ncas)
-    pqc = Parameterized_circuit(ncas, nelecas, dev, add_singles=False)
+    pqc = Parameterized_circuit(ncas, nelecas, dev,
+                                ansatz='np_fabric', n_layers=2,add_singles=False)
     theta = torch.rand_like(pqc.init_zeros())
     state = pqc.ansatz_state(theta)
     print("theta = ", theta)
@@ -207,3 +248,8 @@ if __name__ == '__main__':
     plt.imshow(two_rdm.reshape(ncas**2,ncas**2))
     plt.colorbar()
     plt.show()
+    
+    
+    
+    # def cost(theta):
+    

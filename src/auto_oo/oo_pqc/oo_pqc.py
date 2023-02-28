@@ -183,7 +183,8 @@ if __name__ == '__main__':
     ncas = 3
     nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
-    pqc = Parameterized_circuit(ncas, nelecas, dev, add_singles=False)
+    pqc = Parameterized_circuit(ncas, nelecas, dev, ansatz='np_fabric',
+                                n_layers=2, add_singles=False)
     theta = torch.rand_like(pqc.init_zeros())
     # theta = pqc.init_zeros()
     state = pqc.ansatz_state(theta)
