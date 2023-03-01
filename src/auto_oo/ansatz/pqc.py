@@ -9,6 +9,7 @@ import warnings
 import itertools
 
 import torch
+import numpy as np
 import pennylane as qml
 import openfermion
 
@@ -19,7 +20,7 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=UserWarning)
 
 
-def e_pq(p, q, restricted=True, up_then_down=False):
+def e_pq(p, q, n_modes, restricted=True, up_then_down=False):
     r"""
     Can generate either spin-unrestricted single excitation operator:
     
@@ -33,19 +34,19 @@ def e_pq(p, q, restricted=True, up_then_down=False):
     where :math:`p` and :math:`q` are spatial indices.
     """
     if restricted:
-        operator = (openfermion.FermionOperator(f'{2*p}^ {2*q}') + 
+        if up_then_down:
+            operator = (openfermion.FermionOperator(f'{p}^ {q}') +
+                    openfermion.FermionOperator(f'{p+n_modes}^ {q + n_modes}'))
+        else:
+            operator = (openfermion.FermionOperator(f'{2*p}^ {2*q}') + 
                     openfermion.FermionOperator(f'{2*p+1}^ {2*q+1}'))
-
     else:
         operator = openfermion.FermionOperator(f'{p}^ {q}')
-    # if up_then_down:
-    #     return openfermion.transforms.reorder(
-    #         operator,openfermion.utils.up_then_down)
-    # else:
+        
     return operator
         
         
-def e_pqrs(p, q, r, s, restricted=True, up_then_down=False):
+def e_pqrs(p, q, r, s, n_modes, restricted=True, up_then_down=False):
     r"""
     Can generate either spin-unrestricted double excitation operator:
     
@@ -65,16 +66,12 @@ def e_pqrs(p, q, r, s, restricted=True, up_then_down=False):
     Hamiltonian or to obtain the two-electron RDM.
     """
     if restricted:
-        operator = e_pq(p, q, restricted, up_then_down) * e_pq(
-            r, s, restricted, up_then_down)
+        operator = e_pq(p, q, n_modes, restricted, up_then_down) * e_pq(
+            r, s, n_modes, restricted, up_then_down)
         if q == r:
-            operator += - e_pq(p, s, restricted, up_then_down)
+            operator += - e_pq(p, s, n_modes, restricted, up_then_down)
     else:
         operator = openfermion.FermionOperator(f'{p}^ {q}^ {r} {s}')
-    # if up_then_down:
-    #     return openfermion.transforms.reorder(
-    #         operator,openfermion.utils.up_then_down)
-    # else:
     return operator
     
 
@@ -101,7 +98,7 @@ def initialize_e_pq(ncas, restricted=True, up_then_down=False):
         num_ind = 2 * ncas
     return [[scipy_csc_to_torch(
         openfermion.get_sparse_operator(
-            e_pq(p,q,restricted, up_then_down), n_qubits=2*ncas))
+            e_pq(p,q, num_ind, restricted, up_then_down), n_qubits=2*ncas))
         for q in range(num_ind)] for p in range(num_ind)]
 
 def initialize_e_pqrs(ncas, restricted = True, up_then_down=False):
@@ -112,7 +109,7 @@ def initialize_e_pqrs(ncas, restricted = True, up_then_down=False):
         num_ind = 2 * ncas
     return [[[[scipy_csc_to_torch(
         openfermion.get_sparse_operator(
-            e_pqrs(p,q,r,s,restricted,up_then_down), n_qubits=2*ncas))
+            e_pqrs(p,q,r,s, num_ind, restricted,up_then_down), n_qubits=2*ncas))
         for s in range(num_ind)] for r in range(num_ind)]
         for q in range(num_ind)] for p in range(num_ind)]
 
@@ -130,8 +127,11 @@ def uccd_state(theta, dev, wires, s_wires, d_wires, hfstate, add_singles):
 def gatefabric_state(theta, dev, wires, hfstate):
     @qml.qnode(dev, interface='torch', diff_method='backprop')
     def gatefabric_circuit():
+        l2 = list(range(1,len(wires),2))
+        l1 = list(range(0,len(wires),2))
         qml.GateFabric(theta,
                        wires=wires, init_state=hfstate, include_pi=False)
+        qml.Permute(l1 + l2, wires)
         return qml.state()
     return gatefabric_circuit()
 
@@ -167,15 +167,21 @@ class Parameterized_circuit():
             self.up_then_down = True
             self.wires = list(range(self.n_qubits))
             self.hfstate = qml.qchem.hf_state(nelecas, self.n_qubits)
-            self.theta_shape = qml.GateFabric.shape(self.n_layers, len(
+
+            self.full_theta_shape = qml.GateFabric.shape(self.n_layers, len(
                 self.wires))
+            if self.n_qubits > 4:
+                self.nq_redundant = (self.n_qubits//4) * 2
+            else:
+                self.nq_redundant = 0
+            self.theta_shape = (np.prod(self.full_theta_shape) - self.nq_redundant)
+            # self.theta_shape = 
+            # self.redundant_theta = torch.zeros()
             self.ansatz_state = self.gatefabric_state
             
-            
+
         else:
             self.ansatz_state = ansatz
-        
-        
         
     def uccd_state(self, theta):
         return uccd_state(theta, 
@@ -183,7 +189,10 @@ class Parameterized_circuit():
                           self.d_wires, self.hfstate, self.add_singles)
     
     def gatefabric_state(self, theta):
-        return gatefabric_state(theta, self.dev, self.wires, self.hfstate)
+        theta_full = torch.zeros(self.nq_redundant + self.theta_shape)
+        theta_full[self.nq_redundant:] = theta
+        theta_full = theta_full.reshape(self.full_theta_shape)
+        return gatefabric_state(theta_full, self.dev, self.wires, self.hfstate)
     
     
     def init_zeros(self):
@@ -232,15 +241,19 @@ if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
     
-    ncas = 2
-    nelecas = 2
+    ncas = 4
+    nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
     pqc = Parameterized_circuit(ncas, nelecas, dev,
-                                ansatz='np_fabric', n_layers=2,add_singles=False)
-    theta = torch.rand_like(pqc.init_zeros())
+                                ansatz='np_fabric', n_layers=3,add_singles=False)
+    # theta = torch.rand_like(pqc.init_zeros())
+    theta = pqc.init_zeros()
+    # theta = torch.Tensor([[[-0.2,0.3]],
+    #                       [[-0.2,0.1]]])
     state = pqc.ansatz_state(theta)
     print("theta = ", theta)
     print("state:", dirac_notation(state.detach().numpy()))
+    # pqc.up_then_down = False
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
     plt.imshow(one_rdm)
     plt.colorbar()

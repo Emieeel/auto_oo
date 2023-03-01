@@ -7,6 +7,7 @@ Created on Wed Sep 28 10:37:49 2022
 """
 
 import torch
+import numpy as np
 
 def wolfe(t, grad, dp, alpha=1e-4):
     return alpha * t * torch.dot(grad,dp)
@@ -138,13 +139,15 @@ class NewtonStep():
         where starting at :math:`t:=1` at each step, :math:`t:=\beta t`.
         """
         nargs = len(parameters)
-        paramshapes = [parameters[i].shape[-1] for i in range(nargs)]
+
         
         t = 1.
         
         energy = objective_fn(*parameters).item()
         
-        parameters_tot = torch.cat(parameters)
+        parameters_tot = torch.cat([parameter.flatten() for parameter in parameters])
+        
+        paramshapes = [parameter.shape for parameter in parameters]
         
         newp = parameters_tot + (t * dp)
         test_energy = objective_fn(*split_list_shapes(newp, paramshapes))
@@ -203,11 +206,12 @@ class NewtonStep():
     
 def split_list_shapes(l, paramshapes):
     """Divide list l into parts with given shapes."""
-    if not sum(paramshapes) == len(l):
-        raise ValueError('sum of paramshapes has to be equal to length of list!')
+    # if not sum(paramshapes) == len(l):
+    #     raise ValueError('sum of paramshapes has to be equal to length of list!')
     chunks = []
     num = 0
     for shape in paramshapes:
-        chunks.append(l[num:num+shape])
-        num+=shape
+        shapesize = np.prod(shape)
+        chunks.append(l[num:num+shapesize].reshape(shape))
+        num+=shapesize
     return chunks

@@ -6,11 +6,12 @@ Created on Thu Feb  9 16:10:18 2023
 @author: emielkoridon
 """
 
+import numpy as np
 import pennylane as qml
 import torch
-from functorch import jacfwd
+# from functorch import jacfwd
 from functorch import hessian
-# from torch.autograd.functional import jacobian, hessian
+from torch.autograd.functional import jacobian, hessian
 
 from auto_oo.oo_energy.oo_energy import OO_energy
 from auto_oo.ansatz.pqc import Parameterized_circuit
@@ -67,8 +68,10 @@ class OO_pqc_cost(OO_energy):
     
     def circuit_gradient(self, theta):
         """Calculate the electronic gradient w.r.t. circuit parameters"""
-        # return jacobian(self.energy_from_parameters, theta)
-        return jacfwd(self.energy_from_parameters)(theta)
+        return jacobian(self.energy_from_parameters, theta).reshape(
+            np.prod(self.pqc.theta_shape))
+        # return jacfwd(self.energy_from_parameters)(theta).reshape(
+        #     np.prod(self.pqc.theta_shape))
     
     def orbital_gradient(self, theta):
         """Generate analytically the flattened electronic gradient w.r.t. orbital rotation
@@ -80,14 +83,18 @@ class OO_pqc_cost(OO_energy):
     
     def circuit_circuit_hessian(self, theta):
         """Calculate the electronic hessian w.r.t circuit parameters"""
-        # return hessian(self.energy_from_parameters,theta)
-        return hessian(self.energy_from_parameters)(theta)
-
+        return hessian(self.energy_from_parameters,theta).reshape(
+            np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
+        # return hessian(self.energy_from_parameters)(theta).reshape(
+        #     np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
+    
     def orbital_circuit_hessian(self, theta):
         """Generate the mixed orbital-pqc parameter hessian by automatic differentation
         of the analytic orbital gradient"""
-        # return jacobian(self.orbital_gradient,theta)
-        return jacfwd(self.orbital_gradient)(theta)
+        return jacobian(self.orbital_gradient,theta).reshape(
+            self.n_kappa,np.prod(self.pqc.theta_shape))
+        # return jacfwd(self.orbital_gradient)(theta).reshape(
+        #     self.n_kappa,np.prod(self.pqc.theta_shape))
     
     def orbital_orbital_hessian(self, theta):
         """Generate the electronic Hessian w.r.t. orbital rotations"""
@@ -109,6 +116,12 @@ class OO_pqc_cost(OO_energy):
                     torch.cat((hessian_vqe_vqe, hessian_vqe_oo.t()), dim=1),
                     torch.cat((hessian_vqe_oo, hessian_oo_oo), dim=1)), dim = 0)
         return hessian
+    
+    def full_circuit_hessian_to_matrix(self, full_circuit_hessian):
+        theta_shape = self.pqc.theta_shape
+        size = np.prod(theta_shape)
+        return full_circuit_hessian.reshape(size,size)
+        
     
     def full_optimization(self, theta_init, max_iterations=50, conv_tol=1e-10, verbose=0, **kwargs):
         opt = NewtonStep(verbose=verbose, **kwargs)
@@ -135,7 +148,7 @@ class OO_pqc_cost(OO_energy):
             
             hess_eig_l.append(hess_eig)
             
-            theta = new_theta_kappa[0]
+            theta = new_theta_kappa[0].reshape(self.pqc.theta_shape)
             kappa = new_theta_kappa[1]
     
             theta_l.append(theta.detach().clone())
@@ -177,31 +190,36 @@ if __name__ == '__main__':
         return geom
     
     geometry = get_formal_geo(140, 80)
-    basis = 'sto-3g'
+    basis = 'cc-pvdz'
     mol = Moldata_pyscf(geometry, basis)
 
-    ncas = 3
+    ncas = 4
     nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
     pqc = Parameterized_circuit(ncas, nelecas, dev, ansatz='np_fabric',
-                                n_layers=2, add_singles=False)
-    theta = torch.rand_like(pqc.init_zeros())
-    # theta = pqc.init_zeros()
+                                n_layers=3, add_singles=True)
+    # theta = torch.rand_like(pqc.init_zeros())
+    theta = pqc.init_zeros()
     state = pqc.ansatz_state(theta)
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
 
     
-    oo_pqc = OO_pqc_cost(pqc, mol, ncas, nelecas)#, oao_mo_coeff = oao_mo_coeff)
+    oo_pqc = OO_pqc_cost(pqc, mol, ncas, nelecas, freeze_active=True)#, oao_mo_coeff = oao_mo_coeff)
     
+    mol.run_rhf()
+    mol.run_casscf(ncas, nelecas)
     
-    # mo_coeff = torch.from_numpy(mol.oao_coeff)
+    from auto_oo.oo_energy.oo_energy import mo_ao_to_mo_oao
+    oao_mo_coeff = torch.from_numpy(
+        mo_ao_to_mo_oao(mol.casscf.mo_coeff,mol.overlap))
+    
     # from scipy.stats import ortho_group
     # mo_transform = torch.from_numpy(ortho_group.rvs(mol.nao))
     # oao_mo_coeff = mo_transform
     # oao_mo_coeff = torch.eye(mol.nao)
-    # oo_pqc.oao_mo_coeff = oao_mo_coeff
-    # print("check if property works:",
-    #       torch.allclose(oo_pqc.mo_coeff, torch.from_numpy(mol.oao_coeff) @ oao_mo_coeff)     )
+    oo_pqc.oao_mo_coeff = oao_mo_coeff
+    print("check if property works:",
+          torch.allclose(oo_pqc.mo_coeff, torch.from_numpy(mol.casscf.mo_coeff)))
     
 
     
@@ -210,7 +228,6 @@ if __name__ == '__main__':
     print("theta:", theta)
     print("state:", dirac_notation(state.detach().numpy()))
     print('Expectation value of Hamiltonian:', energy_test.item())
-    mol.run_rhf()
     print('HF energy:', mol.hf.e_tot)
     
     plt.title('one rdm')
@@ -226,39 +243,73 @@ if __name__ == '__main__':
 
     import time
     t0 = time.time()
-    # grad_auto = jacobian(oo_pqc.energy_from_parameters, (
-    #     theta,kappa))
-    grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
-        theta,kappa)
-    hess_auto = hessian(oo_pqc.energy_from_parameters,(theta,kappa))
+    grad_auto = jacobian(oo_pqc.energy_from_parameters, (
+        theta,kappa))
+    # grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
+    #     theta,kappa)
+    # hess_auto = hessian(oo_pqc.energy_from_parameters,(theta,kappa))
     # hess_auto = hessian(oo_pqc.energy_from_parameters,
     #                     argnums=(0,1))(theta, kappa)
+    
+    grad_C = grad_auto[0].reshape(np.prod(pqc.theta_shape))
+    # hess_CC = hess_auto[0][0].reshape(np.prod(pqc.theta_shape),np.prod(pqc.theta_shape))
+    # hess_CO = hess_auto[1][0].reshape(oo_pqc.n_kappa,np.prod(pqc.theta_shape))
     print("time took to generate everything with auto-differentation:", time.time()-t0)
     
     t1 = time.time()
     print("should all be True:",
-          torch.allclose(grad_auto[0], oo_pqc.circuit_gradient(theta)),
-          torch.allclose(grad_auto[1], oo_pqc.orbital_gradient(theta)),
-          torch.allclose(hess_auto[0][0], oo_pqc.circuit_circuit_hessian(theta)),
-          torch.allclose(hess_auto[1][0], oo_pqc.orbital_circuit_hessian(theta)),
-          torch.allclose(hess_auto[1][1], oo_pqc.orbital_orbital_hessian(theta)))
+          torch.allclose(grad_C, oo_pqc.circuit_gradient(theta)),
+          torch.allclose(grad_auto[1], oo_pqc.orbital_gradient(theta)))#,
+          # torch.allclose(hess_CC, oo_pqc.circuit_circuit_hessian(theta)),
+          # torch.allclose(hess_CO, oo_pqc.orbital_circuit_hessian(theta)),
+          # torch.allclose(hess_auto[1][1], oo_pqc.orbital_orbital_hessian(theta)))
     print("time took to generate full hessian but orbital part analytically:",
           time.time()-t1)
     
     
     
-    # orbgrad_auto_2d = oo_pqc.kappa_vector_to_matrix(orbgrad_auto[1])
-    # orbgrad_exact = oo_pqc.orbital_gradient(one_rdm, two_rdm)
+    orbgrad_auto_2d = oo_pqc.kappa_vector_to_matrix(grad_auto[1])
+    orbgrad_exact = oo_pqc.analytic_gradient(one_rdm, two_rdm)
     
-    # plt.title('automatic diff orbital gradient')
-    # plt.imshow(orbgrad_auto_2d)
-    # plt.colorbar()
-    # plt.show()
-    # plt.title('exact orbital gradient')
-    # plt.imshow(orbgrad_exact)
-    # plt.colorbar()
-    # plt.show()
+    plt.title('automatic diff orbital gradient')
+    plt.imshow(orbgrad_auto_2d,vmin=-1,vmax=1)
+    plt.colorbar()
+    plt.show()
+    plt.title('exact orbital gradient')
+    plt.imshow(orbgrad_exact,vmin=-1,vmax=1)
+    plt.colorbar()
+    plt.show()
     
+    energy_l, theta_l, kappa_l, oao_mo_coeff_l, hess_eig_l = oo_pqc.full_optimization(
+        theta.detach().clone(), max_iterations=50, conv_tol=1e-8, verbose=1)
+    
+
+    
+    print("Converged energy:", energy_l[-1])
+    print("CASSCF energy comparison", mol.casscf.e_tot)
+    print("final_state:", dirac_notation(pqc.ansatz_state(theta_l[-1]).detach().numpy()))
+
+    hess_full = oo_pqc.full_hessian(theta_l[-1])
+    vhess, whess = torch.linalg.eigh(hess_full)
+    print("lowest eigenvalues total hessian:", vhess[:10])
+    
+    hess_CC = oo_pqc.circuit_circuit_hessian(theta_l[-1])
+    vhess_CC, whess_CC = torch.linalg.eigh(hess_CC)
+    print("lowest eigenvalues circuit hessian:", vhess_CC[:10])
+    
+    hess_OO = oo_pqc.orbital_orbital_hessian(theta_l[-1])
+    vhess_OO, whess_OO = torch.linalg.eigh(hess_OO)
+    print("lowest eigenvalues orbital hessian:", vhess_OO[:10])
+
+    plt.title(f'OO hessian lowest eigenvector of eigval={vhess_OO[0]:.4f}')
+    plt.imshow(oo_pqc.kappa_vector_to_matrix(whess_OO[:,0]))
+    plt.colorbar()
+    plt.show()
+    
+    plt.title(f'CC hessian lowest eigenvector of eigval={vhess_CC[0]:.4f}')
+    plt.plot(whess_CC[:,0], '.')
+    plt.show()
+
     # orbgrad_auto_flat = orbgrad_auto[1]
     # orbgrad_exact_flat = oo_pqc.kappa_matrix_to_vector(orbgrad_exact)
     
