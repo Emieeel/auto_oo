@@ -9,8 +9,10 @@ Created on Wed Sep 28 10:37:49 2022
 import torch
 import numpy as np
 
+
 def wolfe(t, grad, dp, alpha=1e-4):
-    return alpha * t * torch.dot(grad,dp)
+    return alpha * t * torch.dot(grad, dp)
+
 
 class NewtonStep():
     r"""Newton step and cost for pytorch.
@@ -21,46 +23,47 @@ class NewtonStep():
     .. math::
         x^{(t+1)} = x^{(t)} - H^{-1}(x^{(t)})G(x^{(t)}),
 
-    where :math:`H(x^{(t)}) = \nabla^2 f(x^{(t)})` denotes the Hessian, and 
+    where :math:`H(x^{(t)}) = \nabla^2 f(x^{(t)})` denotes the Hessian, and
     :math:`G(x^{(t)}) = \nabla f(x^{(t)})` the gradient.
-    
+
     If aug = True, check if :math:`\lambda_0 < \lambda_{\rm min}`, and define augmented Hessian:
-    
+
     .. math::
         H(x) = H(x) + \nu I
-    
+
     where :math:`\nu=\rho|\lambda_0| + \mu` with :math:`\lambda_0` the lowest eigenvalue of
     the Hessian.
-    
+
     While positive definiteness of the Hessian guarantees a descent direction, it could be that
     the step is too large. Backtracking line search is implemented in that case.
     :math:`\alpha \in (0, 0.5)`, :math:`\beta \in (0,1)` are the hyperparameters
     of the backtracking line search with termination condition:
-        
+
     .. math::
         f(x + t\Delta x) < f(x) + \alpha t G(x)^T \Delta x
-    
+
     where starting at :math:`t:=1` at each step, :math:`t:=\beta t`.
 
     Args:
         alpha (float): the user-defined hyperparameter :math:`\alpha`
-        
+
         beta (float): the user-defined hyperparameter :math:`\beta`
-        
+
         mu (float): the user-defined hyperparameter :math:`\mu`
-        
+
         rho (float): the user-defined hyperparameter :math:`\rho`
-        
-        lambda_min (float): the user-defined hyperparameter 
+
+        lambda_min (float): the user-defined hyperparameter
             :math:`\lambda_{\rm min}`
-        
+
         lmax (int): maximal line search steps
-        
+
         aug (bool): if True, use augmented Hessian (recommended)
-        
+
         back (bool): if True, use backtracking line search (recommended)
 
     """
+
     def __init__(self,
                  alpha=0.0001, beta=.5, mu=1e-6, rho=1.1, lmax=20, lambda_min=1e-6,
                  aug=True, verbose=1):
@@ -72,30 +75,30 @@ class NewtonStep():
         self.lambda_min = lambda_min
         self.aug = aug
         self.verbose = verbose
-    
+
     def newton_step(self, gradient, hessian):
         r"""
         Calculate the newton step:
-            
+
         .. math::
             x^{(t+1)} = x^{(t)} - H^{-1}(x^{(t)})G(x^{(t)}),
 
-        where :math:`H(x^{(t)}) = \nabla^2 f(x^{(t)})` denotes the Hessian, and 
+        where :math:`H(x^{(t)}) = \nabla^2 f(x^{(t)})` denotes the Hessian, and
         :math:`G(x^{(t)}) = \nabla f(x^{(t)})` the gradient.
-        
+
         If aug = True, check if :math:`\lambda_0 < \lambda_{\rm min}`, and define augmented Hessian:
-        
+
         .. math::
             H(x) = H(x) + \nu I
-        
+
         where :math:`\nu=\rho|\lambda_0| + \mu` with :math:`\lambda_0` the lowest eigenvalue of
         the Hessian.
-        
+
         Args:
             gradient (1D torch.Tensor): Gradient of a function
 
             hessian (2D torch.Tensor): Hessian of a function
-        
+
         Returns:
             dp (1D torch.Tensor): Newton step
 
@@ -106,8 +109,8 @@ class NewtonStep():
 
         lowest_eigenvalue = vhessian[0].item()
         if self.verbose:
-            print("lowest eigval hessian =",lowest_eigenvalue)
-        
+            print("lowest eigval hessian =", lowest_eigenvalue)
+
         # augment Hessian if not positive definite
         if lowest_eigenvalue < self.lambda_min and self.aug:
             if self.verbose:
@@ -119,36 +122,35 @@ class NewtonStep():
             if self.verbose:
                 print("Lowest eigenvalue of augmented hessian:",
                       vhessian[0].item())
-        
+
         # Invert hessian
         hessian_inv = whessian @ torch.diag(1/vhessian) @ torch.t(whessian)
-        
+
         dp = - (hessian_inv @ gradient)
         return dp, lowest_eigenvalue
-    
+
     def backtracking(self, objective_fn, parameters, dp, gradient):
         r"""
         While positive definiteness of the Hessian guarantees a descent direction, it could be that
         the step is too large. Backtracking line search is to be advised in that case.
         :math:`\alpha \in (0, 0.5)`, :math:`\beta \in (0,1)` are the hyperparameters
         of the backtracking line search with termination condition:
-            
+
         .. math::
             f(x + t\Delta x) < f(x) + \alpha t G(x)^T \Delta x
-        
+
         where starting at :math:`t:=1` at each step, :math:`t:=\beta t`.
         """
         nargs = len(parameters)
 
-        
         t = 1.
-        
+
         energy = objective_fn(*parameters).item()
-        
+
         parameters_tot = torch.cat([parameter.flatten() for parameter in parameters])
-        
+
         paramshapes = [parameter.shape for parameter in parameters]
-        
+
         newp = parameters_tot + (t * dp)
         test_energy = objective_fn(*split_list_shapes(newp, paramshapes))
 
@@ -181,9 +183,8 @@ class NewtonStep():
         else:
             new_parameters = newp
 
+        return new_parameters, new_energy
 
-        return new_parameters, new_energy    
-    
     def damped_newton_step(self, objective_fn, parameters, gradient, hessian):
         """Update trainable arguments with one step of the optimizer and
         return the corresponding objective function value prior to the step.
@@ -202,16 +203,16 @@ class NewtonStep():
         new_parameters, new_energy = self.backtracking(
             objective_fn, parameters, dp, gradient)
         return new_parameters, lowest_eigenvalue
-    
-    
-def split_list_shapes(l, paramshapes):
-    """Divide list l into parts with given shapes."""
+
+
+def split_list_shapes(parameters, paramshapes):
+    """Divide list parameters into parts with given shapes."""
     # if not sum(paramshapes) == len(l):
     #     raise ValueError('sum of paramshapes has to be equal to length of list!')
     chunks = []
     num = 0
     for shape in paramshapes:
         shapesize = np.prod(shape)
-        chunks.append(l[num:num+shapesize].reshape(shape))
-        num+=shapesize
+        chunks.append(parameters[num:num+shapesize].reshape(shape))
+        num += shapesize
     return chunks

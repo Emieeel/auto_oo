@@ -7,6 +7,7 @@ Created on Thu Feb  9 15:39:19 2023
 """
 import warnings
 import itertools
+from functools import partial
 
 import torch
 import numpy as np
@@ -23,12 +24,12 @@ with warnings.catch_warnings():
 def e_pq(p, q, n_modes, restricted=True, up_then_down=False):
     r"""
     Can generate either spin-unrestricted single excitation operator:
-    
+
     .. math::
         E_{pq} = a_{p}^\dagger a_{q}
     where :math:`p` and :math:`q` are composite spatial/spin indices,
     or spin-restricted single excitation operator:
-    
+
     .. math::
             E_{pq} = \sum_\sigma a_{p \sigma}^\dagger a_{q \sigma}
     where :math:`p` and :math:`q` are spatial indices.
@@ -36,32 +37,32 @@ def e_pq(p, q, n_modes, restricted=True, up_then_down=False):
     if restricted:
         if up_then_down:
             operator = (openfermion.FermionOperator(f'{p}^ {q}') +
-                    openfermion.FermionOperator(f'{p+n_modes}^ {q + n_modes}'))
+                        openfermion.FermionOperator(f'{p+n_modes}^ {q + n_modes}'))
         else:
-            operator = (openfermion.FermionOperator(f'{2*p}^ {2*q}') + 
-                    openfermion.FermionOperator(f'{2*p+1}^ {2*q+1}'))
+            operator = (openfermion.FermionOperator(f'{2*p}^ {2*q}') +
+                        openfermion.FermionOperator(f'{2*p+1}^ {2*q+1}'))
     else:
         operator = openfermion.FermionOperator(f'{p}^ {q}')
-        
+
     return operator
-        
-        
+
+
 def e_pqrs(p, q, r, s, n_modes, restricted=True, up_then_down=False):
     r"""
     Can generate either spin-unrestricted double excitation operator:
-    
+
     .. math::
         e_{pqrs} = a_{p}^\dagger a_{q}^\dagger a_{r} a_{s}
     where :math:`p` and :math:`q` are composite spatial/spin indices,
     or spin-restricted double excitation operator:
-    
+
     .. math::
         e_{pqrs} = \sum_{\sigma \tau} a_{p \sigma}^\dagger a_{
             r \tau}^\dagger a_{s \tau} a_{q \sigma}
                  = E_{pq}E_{rs} -\delta_{qr}E_{ps}
     where the indices are spatial indices.
-    
-    Indices in the restricted case are in chemist order, meant to be 
+
+    Indices in the restricted case are in chemist order, meant to be
     contracted with two-electron integrals in chemist order to obtain the
     Hamiltonian or to obtain the two-electron RDM.
     """
@@ -73,11 +74,11 @@ def e_pqrs(p, q, r, s, n_modes, restricted=True, up_then_down=False):
     else:
         operator = openfermion.FermionOperator(f'{p}^ {q}^ {r} {s}')
     return operator
-    
+
 
 def scipy_csc_to_torch(scipy_csc, dtype=torch.complex128):
     """ Convert a scipy sparse CSC matrix to pytorch sparse tensor.
-    
+
     TODO: Newton-Raphson only works if I cast them to dense matrices for some reason....
           so now it has a similar runtime as the jordan-wigner intops functions, but
           reduced because it is in the restricted formalism."""
@@ -90,6 +91,7 @@ def scipy_csc_to_torch(scipy_csc, dtype=torch.complex128):
         torch.tensor(row_indices, dtype=torch.int64),
         torch.tensor(values), dtype=dtype, size=size).to_dense().detach()
 
+
 def initialize_e_pq(ncas, restricted=True, up_then_down=False):
     """Initialize full e_pq operator in pytorch CSC sparse format"""
     if restricted:
@@ -98,10 +100,11 @@ def initialize_e_pq(ncas, restricted=True, up_then_down=False):
         num_ind = 2 * ncas
     return [[scipy_csc_to_torch(
         openfermion.get_sparse_operator(
-            e_pq(p,q, num_ind, restricted, up_then_down), n_qubits=2*ncas))
+            e_pq(p, q, num_ind, restricted, up_then_down), n_qubits=2*ncas))
         for q in range(num_ind)] for p in range(num_ind)]
 
-def initialize_e_pqrs(ncas, restricted = True, up_then_down=False):
+
+def initialize_e_pqrs(ncas, restricted=True, up_then_down=False):
     """Initialize full e_pqrs operator in pytorch CSC sparse format"""
     if restricted:
         num_ind = ncas
@@ -109,31 +112,28 @@ def initialize_e_pqrs(ncas, restricted = True, up_then_down=False):
         num_ind = 2 * ncas
     return [[[[scipy_csc_to_torch(
         openfermion.get_sparse_operator(
-            e_pqrs(p,q,r,s, num_ind, restricted,up_then_down), n_qubits=2*ncas))
+            e_pqrs(p, q, r, s, num_ind, restricted, up_then_down), n_qubits=2*ncas))
         for s in range(num_ind)] for r in range(num_ind)]
         for q in range(num_ind)] for p in range(num_ind)]
 
-def uccd_state(theta, dev, wires, s_wires, d_wires, hfstate, add_singles):
-    @qml.qnode(dev, interface='torch', diff_method="backprop")
-    def uccd_circuit():
-        if add_singles:
-            qml.UCCSD(theta, wires, s_wires=s_wires,
-                      d_wires=d_wires, init_state=hfstate)
-        else:
-            UCCD(theta, wires, d_wires, init_state=hfstate)
-        return qml.state()
-    return uccd_circuit()
 
-def gatefabric_state(theta, dev, wires, hfstate):
-    @qml.qnode(dev, interface='torch', diff_method='backprop')
-    def gatefabric_circuit():
-        l2 = list(range(1,len(wires),2))
-        l1 = list(range(0,len(wires),2))
-        qml.GateFabric(theta,
-                       wires=wires, init_state=hfstate, include_pi=False)
-        qml.Permute(l1 + l2, wires)
-        return qml.state()
-    return gatefabric_circuit()
+def uccd_circuit(theta, wires, s_wires, d_wires, hfstate, add_singles=False):
+    if add_singles:
+        qml.UCCSD(theta, wires, s_wires=s_wires,
+                  d_wires=d_wires, init_state=hfstate)
+    else:
+        UCCD(theta, wires, d_wires, init_state=hfstate)
+    return qml.state()
+
+
+def gatefabric_circuit(theta, wires, hfstate):
+    l2 = list(range(1, len(wires), 2))
+    l1 = list(range(0, len(wires), 2))
+    qml.GateFabric(theta,
+                   wires=wires, init_state=hfstate, include_pi=False)
+    qml.Permute(l1 + l2, wires)
+    return qml.state()
+
 
 class Parameterized_circuit():
     def __init__(self, ncas, nelecas, dev, ansatz='ucc', n_layers=3, add_singles=False):
@@ -160,53 +160,57 @@ class Parameterized_circuit():
                 self.singles, self.doubles)
             self.hfstate = qml.qchem.hf_state(nelecas, self.n_qubits)
             self.wires = range(self.n_qubits)
-            self.ansatz_state = self.uccd_state
+            self.qnode = qml.qnode(dev, interface='torch', diff_method='backprop')(
+                self.uccd_state)
 
         elif ansatz == 'np_fabric':
             self.n_layers = n_layers
             self.up_then_down = True
             self.wires = list(range(self.n_qubits))
             self.hfstate = qml.qchem.hf_state(nelecas, self.n_qubits)
-
             self.full_theta_shape = qml.GateFabric.shape(self.n_layers, len(
                 self.wires))
             if self.n_qubits > 4:
-                self.nq_redundant = (self.n_qubits//4) * 2
+                self.redundant_idx = [x for x in range(0, 2*(self.nelecas//4))]
+                if self.ncas % 2 == 0:
+                    self.redundant_idx += [x for x in range(2*((self.n_qubits-self.nelecas)//4),
+                                                            2*(self.n_qubits//4))]
             else:
-                self.nq_redundant = 0
-            self.theta_shape = (np.prod(self.full_theta_shape) - self.nq_redundant)
-            # self.theta_shape = 
-            # self.redundant_theta = torch.zeros()
-            self.ansatz_state = self.gatefabric_state
-            
+                self.redundant_idx = []
+            self.params_idx = [x for x in range(np.prod(self.full_theta_shape))
+                               if x not in self.redundant_idx]
+            self.theta_shape = len(self.params_idx)
+            self.qnode = qml.qnode(dev, interface='torch', diff_method='backprop')(
+                self.gatefabric_state)
 
         else:
-            self.ansatz_state = ansatz
-        
+            self.qnode = ansatz
+
+        self.ansatz_state = self.qnode
+
     def uccd_state(self, theta):
-        return uccd_state(theta, 
-                          self.dev, self.wires, self.s_wires,
-                          self.d_wires, self.hfstate, self.add_singles)
-    
+        return uccd_circuit(theta,
+                            self.wires, self.s_wires,
+                            self.d_wires, self.hfstate, self.add_singles)
+
     def gatefabric_state(self, theta):
-        theta_full = torch.zeros(self.nq_redundant + self.theta_shape)
-        theta_full[self.nq_redundant:] = theta
+        theta_full = torch.zeros(len(self.redundant_idx) + self.theta_shape)
+        theta_full[self.params_idx] = theta
         theta_full = theta_full.reshape(self.full_theta_shape)
-        return gatefabric_state(theta_full, self.dev, self.wires, self.hfstate)
-    
-    
+        return gatefabric_circuit(theta_full, self.wires, self.hfstate)
+
     def init_zeros(self):
         return torch.zeros(self.theta_shape)
-    
+
     def get_rdms_from_state(self, state, restricted=True):
         r"""
         Generate one- and two-particle reduced density matrices from
         a state :math:`| \Psi \rangle`:
-        
+
         .. math::
             \gamma = \langle \Psi | E_{pq} | \Psi \rangle\\
             \Gamma = \langle \Psi | e_{pqrs} | \Psi \rangle
-        
+
         where the single (double) excitation operators :math:`E_{pq}`
         (:math:`e_{pqrs}`) can be either restricted (summed over spin)
         or unrestricted.
@@ -219,14 +223,17 @@ class Parameterized_circuit():
             rdm_size = 2 * self.ncas
         one_rdm = torch.zeros((rdm_size, rdm_size))
         two_rdm = torch.zeros((rdm_size, rdm_size, rdm_size, rdm_size))
-        for p, q in itertools.product(range(rdm_size),repeat=2):
+        for p, q in itertools.product(range(rdm_size), repeat=2):
             e_pq = self.e_pq[p][q]
-            one_rdm[p,q] = torch.matmul(state, torch.matmul(e_pq, state)).real
-            for r, s in itertools.product(range(rdm_size),repeat=2):
+            one_rdm[p, q] = torch.matmul(state, torch.matmul(e_pq, state)).real
+            for r, s in itertools.product(range(rdm_size), repeat=2):
                 e_pqrs = self.e_pqrs[p][q][r][s]
-                two_rdm[p,q,r,s] = torch.matmul(state, torch.matmul(e_pqrs, state)).real
+                two_rdm[p, q, r, s] = torch.matmul(state, torch.matmul(e_pqrs, state)).real
         return one_rdm, two_rdm
-        
+
+    def draw_circuit(self, theta):
+        return qml.draw(self.qnode, expansion_strategy='device')(theta)
+
     def init_e_pq(self, restricted=True):
         if self.e_pq is None:
             self.e_pq = initialize_e_pq(self.ncas, restricted,
@@ -236,33 +243,35 @@ class Parameterized_circuit():
         if self.e_pqrs is None:
             self.e_pqrs = initialize_e_pqrs(self.ncas, restricted,
                                             self.up_then_down)
-            
+
+
 if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
-    
-    ncas = 4
-    nelecas = 4
+
+    ncas = 3
+    nelecas = 2
     dev = qml.device('default.qubit', wires=2*ncas)
     pqc = Parameterized_circuit(ncas, nelecas, dev,
-                                ansatz='np_fabric', n_layers=3,add_singles=False)
-    # theta = torch.rand_like(pqc.init_zeros())
-    theta = pqc.init_zeros()
+                                ansatz='np_fabric', n_layers=2, add_singles=False)
+    print(pqc.redundant_idx)
+
+    theta = torch.rand_like(pqc.init_zeros())
+    # theta = pqc.init_zeros()
     # theta = torch.Tensor([[[-0.2,0.3]],
     #                       [[-0.2,0.1]]])
-    state = pqc.ansatz_state(theta)
-    print("theta = ", theta)
-    print("state:", dirac_notation(state.detach().numpy()))
-    # pqc.up_then_down = False
-    one_rdm, two_rdm = pqc.get_rdms_from_state(state)
-    plt.imshow(one_rdm)
-    plt.colorbar()
-    plt.show()
-    plt.imshow(two_rdm.reshape(ncas**2,ncas**2))
-    plt.colorbar()
-    plt.show()
-    
-    
-    
-    # def cost(theta):
-    
+    # state = pqc.ansatz_state(theta)
+    # print("theta = ", theta)
+    # print("state:", dirac_notation(state.detach().numpy()))
+    # # pqc.up_then_down = False
+    # one_rdm, two_rdm = pqc.get_rdms_from_state(state)
+    # plt.imshow(one_rdm)
+    # plt.colorbar()
+    # plt.show()
+    # plt.imshow(two_rdm.reshape(ncas**2, ncas**2))
+    # plt.colorbar()
+    # plt.show()
+
+    print(pqc.draw_circuit(theta))
+
+    # # def cost(theta):

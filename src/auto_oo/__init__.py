@@ -2,7 +2,7 @@
 
 from .ansatz import (Parameterized_circuit,
                      Noisy_parameterized_circuit,
-                     uccd_state)
+                     uccd_circuit)
 
 from .moldata_pyscf import Moldata_pyscf
 
