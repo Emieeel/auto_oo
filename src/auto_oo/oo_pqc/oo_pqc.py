@@ -9,9 +9,9 @@ Created on Thu Feb  9 16:10:18 2023
 import numpy as np
 import pennylane as qml
 import torch
-# from functorch import jacfwd
+from functorch import jacfwd
 from functorch import hessian
-from torch.autograd.functional import jacobian, hessian
+# from torch.autograd.functional import jacobian, hessian
 
 from auto_oo.oo_energy.oo_energy import OO_energy
 from auto_oo.ansatz.pqc import Parameterized_circuit
@@ -68,10 +68,10 @@ class OO_pqc_cost(OO_energy):
 
     def circuit_gradient(self, theta):
         """Calculate the electronic gradient w.r.t. circuit parameters"""
-        return jacobian(self.energy_from_parameters, theta).reshape(
-            np.prod(self.pqc.theta_shape))
-        # return jacfwd(self.energy_from_parameters)(theta).reshape(
+        # return jacobian(self.energy_from_parameters, theta).reshape(
         #     np.prod(self.pqc.theta_shape))
+        return jacfwd(self.energy_from_parameters)(theta).reshape(
+            np.prod(self.pqc.theta_shape))
 
     def orbital_gradient(self, theta):
         """Generate analytically the flattened electronic gradient w.r.t. orbital rotation
@@ -83,18 +83,18 @@ class OO_pqc_cost(OO_energy):
 
     def circuit_circuit_hessian(self, theta):
         """Calculate the electronic hessian w.r.t circuit parameters"""
-        return hessian(self.energy_from_parameters, theta).reshape(
-            np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
-        # return hessian(self.energy_from_parameters)(theta).reshape(
+        # return hessian(self.energy_from_parameters, theta).reshape(
         #     np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
+        return hessian(self.energy_from_parameters)(theta).reshape(
+            np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
 
     def orbital_circuit_hessian(self, theta):
         """Generate the mixed orbital-pqc parameter hessian by automatic differentation
         of the analytic orbital gradient"""
-        return jacobian(self.orbital_gradient, theta).reshape(
+        # return jacobian(self.orbital_gradient, theta).reshape(
+        #     self.n_kappa, np.prod(self.pqc.theta_shape))
+        return jacfwd(self.orbital_gradient)(theta).reshape(
             self.n_kappa, np.prod(self.pqc.theta_shape))
-        # return jacfwd(self.orbital_gradient)(theta).reshape(
-        #     self.n_kappa,np.prod(self.pqc.theta_shape))
 
     def orbital_orbital_hessian(self, theta):
         """Generate the electronic Hessian w.r.t. orbital rotations"""
