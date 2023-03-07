@@ -62,7 +62,7 @@ class OO_pqc_cost(OO_energy):
             mo_coeff = self.mo_coeff
         else:
             mo_coeff = self.get_transformed_mo(self.mo_coeff, kappa)
-        state = self.pqc.ansatz_state(theta)
+        state = self.pqc.qnode(theta)
         one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
         return self.energy_from_mo_coeff(mo_coeff, one_rdm, two_rdm)
 
@@ -76,7 +76,7 @@ class OO_pqc_cost(OO_energy):
     def orbital_gradient(self, theta):
         """Generate analytically the flattened electronic gradient w.r.t. orbital rotation
         parameters for a given set of circuit parameters"""
-        state = self.pqc.ansatz_state(theta)
+        state = self.pqc.qnode(theta)
         one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
         return self.kappa_matrix_to_vector(
             self.analytic_gradient(one_rdm, two_rdm))
@@ -98,7 +98,7 @@ class OO_pqc_cost(OO_energy):
 
     def orbital_orbital_hessian(self, theta):
         """Generate the electronic Hessian w.r.t. orbital rotations"""
-        state = self.pqc.ansatz_state(theta)
+        state = self.pqc.qnode(theta)
         one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
         return self.full_hessian_to_matrix(
             self.analytic_hessian(one_rdm, two_rdm))
@@ -122,7 +122,8 @@ class OO_pqc_cost(OO_energy):
         size = np.prod(theta_shape)
         return full_circuit_hessian.reshape(size, size)
 
-    def full_optimization(self, theta_init, max_iterations=50, conv_tol=1e-10, verbose=0, **kwargs):
+    def full_optimization(self, theta_init, max_iterations=50, conv_tol=1e-10,
+                          verbose=0, **kwargs):
         opt = NewtonStep(verbose=verbose, **kwargs)
         energy_init = self.energy_from_parameters(theta_init).item()
         if verbose is not None:
@@ -153,7 +154,8 @@ class OO_pqc_cost(OO_energy):
             theta_l.append(theta.detach().clone())
             kappa_l.append(kappa.detach().clone())
 
-            self.oao_mo_coeff = self.oao_mo_coeff @ self.kappa_to_mo_coeff(kappa)
+            self.oao_mo_coeff = self.oao_mo_coeff @ self.kappa_to_mo_coeff(
+                kappa)
 
             oao_mo_coeff_l.append(self.oao_mo_coeff.detach().clone())
 
@@ -176,7 +178,7 @@ if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
 
-    torch.set_num_threads(12)
+    torch.set_num_threads(16)
 
     def get_formal_geo(alpha, phi):
         variables = [1.498047, 1.066797, 0.987109, 118.359375] + [alpha, phi]
@@ -200,7 +202,7 @@ if __name__ == '__main__':
                                 n_layers=4, add_singles=True)
     # theta = torch.rand_like(pqc.init_zeros())
     theta = pqc.init_zeros()
-    state = pqc.ansatz_state(theta)
+    state = pqc.qnode(theta)
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
 
     # , oao_mo_coeff = oao_mo_coeff)
@@ -286,7 +288,8 @@ if __name__ == '__main__':
 
     print("Converged energy:", energy_l[-1])
     print("CASSCF energy comparison", mol.casscf.e_tot)
-    print("final_state:", dirac_notation(pqc.ansatz_state(theta_l[-1]).detach().numpy()))
+    print("final_state:", dirac_notation(
+        pqc.qnode(theta_l[-1]).detach().numpy()))
 
     hess_full = oo_pqc.full_hessian(theta_l[-1])
     vhess, whess = torch.linalg.eigh(hess_full)

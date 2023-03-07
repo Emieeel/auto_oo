@@ -128,9 +128,14 @@ class OO_energy():
         Args:
             mol: Moldata_pyscf class containing molecular information like
                 geometry, AO basis, MO basis and 1e- and 2e-integrals
+
             ncas: Number of active orbitals
+
             nelecas: Number of active electrons
-            oao_mo_coeff (default None): Reference OAO-MO coefficients (ndarray)
+
+            oao_mo_coeff (default None): Reference OAO-MO 
+                coefficients (ndarray)
+
             freeze_active (default: False):
                 Freeze active-active oo indices
         """
@@ -241,7 +246,8 @@ class OO_energy():
         int1e_mo = int1e_transform(self.int1e_ao, mo_coeff)
         int2e_mo = int2e_transform(self.int2e_ao, mo_coeff)
 
-        fock_general = self.fock_generalized(int1e_mo, int2e_mo, one_rdm, two_rdm)
+        fock_general = self.fock_generalized(
+            int1e_mo, int2e_mo, one_rdm, two_rdm)
         return 2 * (fock_general - torch.t(fock_general))
 
     def analytic_hessian(self, one_rdm, two_rdm, mo_coeff=None):
@@ -255,11 +261,13 @@ class OO_energy():
 
         one_full, two_full = self.full_rdms(one_rdm, two_rdm)
         y_matrix = self.y_matrix(int2e_mo, two_full)
-        fock_general = self.fock_generalized(int1e_mo, int2e_mo, one_rdm, two_rdm)
+        fock_general = self.fock_generalized(
+            int1e_mo, int2e_mo, one_rdm, two_rdm)
         fock_general_symm = fock_general + torch.t(fock_general)
 
         hess0 = 2 * torch.einsum('pr, qs->pqrs', one_full, int1e_mo)
-        hess1 = - torch.einsum('pr, qs->pqrs', fock_general_symm, torch.eye(self.nao))
+        hess1 = - torch.einsum('pr, qs->pqrs',
+                               fock_general_symm, torch.eye(self.nao))
         hess2 = 2 * y_matrix
 
         hess_permuted0 = hess0 + hess1 + hess2
@@ -275,7 +283,8 @@ class OO_energy():
         one_full = torch.zeros((self.nao, self.nao))
         two_full = torch.zeros((self.nao, self.nao, self.nao, self.nao))
 
-        one_full[self.occ_idx, self.occ_idx] = 2 * torch.ones(len(self.occ_idx))
+        one_full[self.occ_idx, self.occ_idx] = 2 * \
+            torch.ones(len(self.occ_idx))
         one_full[np.ix_(self.act_idx, self.act_idx)] = one_rdm
 
         two_full[np.ix_(*[self.occ_idx]*4)] = 4 * torch.einsum(
@@ -328,10 +337,12 @@ class OO_energy():
     def full_hessian_to_matrix(self, full_hess):
         """Convert the full Hessian (nao,nao,nao,nao) torch.Tensor to a matrix with only
         non-redundant indices."""
-        tril_indices = torch.tril_indices(row=self.nao, col=self.nao, offset=-1)
+        tril_indices = torch.tril_indices(
+            row=self.nao, col=self.nao, offset=-1)
         partial_hess = full_hess[tril_indices[0], tril_indices[1], :, :]
         reduced_hess = partial_hess[:, tril_indices[0], tril_indices[1]]
-        nonredundant_hess = reduced_hess[self.params_idx, :][:, self.params_idx]
+        nonredundant_hess = reduced_hess[self.params_idx,
+                                         :][:, self.params_idx]
         return nonredundant_hess
 
     def orbital_optimization(self, one_rdm, two_rdm,
@@ -344,19 +355,24 @@ class OO_energy():
         energy_l = []
 
         if verbose:
-            energy = self.energy_from_mo_coeff(self.mo_coeff, one_rdm, two_rdm).item()
+            energy = self.energy_from_mo_coeff(
+                self.mo_coeff, one_rdm, two_rdm).item()
             print(f'Starting energy: {energy:.12f}')
 
         for n in range(max_iterations):
             kappa = torch.zeros(self.n_kappa)
-            gradient = self.kappa_matrix_to_vector(self.analytic_gradient(one_rdm, two_rdm))
-            hessian = self.full_hessian_to_matrix(self.analytic_hessian(one_rdm, two_rdm))
+            gradient = self.kappa_matrix_to_vector(
+                self.analytic_gradient(one_rdm, two_rdm))
+            hessian = self.full_hessian_to_matrix(
+                self.analytic_hessian(one_rdm, two_rdm))
 
             kappa, lowest_eigenvalue = opt.damped_newton_step(objective_fn, (kappa,),
                                                               gradient, hessian)
-            self.oao_mo_coeff = self.oao_mo_coeff @ self.kappa_to_mo_coeff(kappa)
+            self.oao_mo_coeff = self.oao_mo_coeff @ self.kappa_to_mo_coeff(
+                kappa)
 
-            energy = self.energy_from_mo_coeff(self.mo_coeff, one_rdm, two_rdm).item()
+            energy = self.energy_from_mo_coeff(
+                self.mo_coeff, one_rdm, two_rdm).item()
             energy_l.append(energy)
 
             if verbose is not None:

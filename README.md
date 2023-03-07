@@ -10,6 +10,4 @@ Optionally use GPU if your system supports it.\
 Then, install this package by cloning the repo, then use `pip install -e .` in the cloned directory.
 
 ## To-do:
-- Fast analytical orbital gradients and Hessians using generalized fock-matrices. DONE!
-- SCF procedure with Newton-Raphson OO with RDMs DONE!
-
+- Newton-Raphson steps with trust-region method

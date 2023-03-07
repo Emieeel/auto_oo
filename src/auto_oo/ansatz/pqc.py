@@ -118,6 +118,7 @@ def initialize_e_pqrs(ncas, restricted=True, up_then_down=False):
 
 
 def uccd_circuit(theta, wires, s_wires, d_wires, hfstate, add_singles=False):
+    """Outputs UCC(S)D ansatz state, in interleaved JW ordering"""
     if add_singles:
         qml.UCCSD(theta, wires, s_wires=s_wires,
                   d_wires=d_wires, init_state=hfstate)
@@ -127,6 +128,8 @@ def uccd_circuit(theta, wires, s_wires, d_wires, hfstate, add_singles=False):
 
 
 def gatefabric_circuit(theta, wires, hfstate):
+    """ Outputs NP fabric ansatz state, adapted to alpha-then-beta
+    JW ordering"""
     l2 = list(range(1, len(wires), 2))
     l1 = list(range(0, len(wires), 2))
     qml.GateFabric(theta,
@@ -136,8 +139,27 @@ def gatefabric_circuit(theta, wires, hfstate):
 
 
 class Parameterized_circuit():
-    def __init__(self, ncas, nelecas, dev, ansatz='ucc', n_layers=3, add_singles=False):
-        """ Parameterized quantum circuit class"""
+    def __init__(self, ncas, nelecas, dev, ansatz='ucc', n_layers=3,
+                 add_singles=False):
+        """ Parameterized quantum circuit class. Defined by an active space of
+        nelecas electrons in ncas orbitals. Can output one and two-RDMs.
+
+        Args:
+            ncas: Number of active orbitals
+
+            nelecas: Number of active electrons
+
+            dev: Pennylane device on which to run the quantum circuit
+
+            ansatz (default 'ucc'): Either 'ucc' or 'np_fabric', one of the
+                native ansatzes implemented, or a custom Pennylane QNode that
+                outputs a computational basis state.
+
+            n_layers (default 3): Number of layers in an 'np_fabric' ansatz.
+
+            add_singles (default: False): Add UCC single excitations to a 'ucc'
+                ansatz
+        """
         self.ncas = ncas
         self.nelecas = nelecas
         self.n_qubits = 2 * ncas
@@ -186,8 +208,6 @@ class Parameterized_circuit():
         else:
             self.qnode = ansatz
 
-        self.ansatz_state = self.qnode
-
     def uccd_state(self, theta):
         return uccd_circuit(theta,
                             self.wires, self.s_wires,
@@ -228,7 +248,8 @@ class Parameterized_circuit():
             one_rdm[p, q] = torch.matmul(state, torch.matmul(e_pq, state)).real
             for r, s in itertools.product(range(rdm_size), repeat=2):
                 e_pqrs = self.e_pqrs[p][q][r][s]
-                two_rdm[p, q, r, s] = torch.matmul(state, torch.matmul(e_pqrs, state)).real
+                two_rdm[p, q, r, s] = torch.matmul(
+                    state, torch.matmul(e_pqrs, state)).real
         return one_rdm, two_rdm
 
     def draw_circuit(self, theta):
