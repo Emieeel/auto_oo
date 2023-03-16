@@ -5,9 +5,8 @@ Created on Thu Feb  9 15:39:19 2023
 
 @author: emielkoridon
 """
-import warnings
+
 import itertools
-from functools import partial
 
 import torch
 import numpy as np
@@ -15,10 +14,6 @@ import pennylane as qml
 import openfermion
 
 from auto_oo.ansatz.uccd import UCCD
-
-torch.set_default_tensor_type(torch.DoubleTensor)
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def e_pq(p, q, n_modes, restricted=True, up_then_down=False):
@@ -32,7 +27,9 @@ def e_pq(p, q, n_modes, restricted=True, up_then_down=False):
 
     .. math::
             E_{pq} = \sum_\sigma a_{p \sigma}^\dagger a_{q \sigma}
-    where :math:`p` and :math:`q` are spatial indices.
+    where :math:`p` and :math:`q` are spatial indices. For the spin-
+    restricted case, One can either select up-then-down convention,
+    or up-down-up-down.
     """
     if restricted:
         if up_then_down:
@@ -118,7 +115,7 @@ def initialize_e_pqrs(ncas, restricted=True, up_then_down=False):
 
 
 def uccd_circuit(theta, wires, s_wires, d_wires, hfstate, add_singles=False):
-    """Outputs UCC(S)D ansatz state, in interleaved JW ordering"""
+    """Outputs UCC(S)D ansatz state, in up-down-up-down JW ordering"""
     if add_singles:
         qml.UCCSD(theta, wires, s_wires=s_wires,
                   d_wires=d_wires, init_state=hfstate)
@@ -128,7 +125,7 @@ def uccd_circuit(theta, wires, s_wires, d_wires, hfstate, add_singles=False):
 
 
 def gatefabric_circuit(theta, wires, hfstate):
-    """ Outputs NP fabric ansatz state, adapted to alpha-then-beta
+    """ Outputs NP fabric ansatz state, adapted to up-then-down
     JW ordering"""
     l2 = list(range(1, len(wires), 2))
     l1 = list(range(0, len(wires), 2))
@@ -142,7 +139,8 @@ class Parameterized_circuit():
     def __init__(self, ncas, nelecas, dev, ansatz='ucc', n_layers=3,
                  add_singles=False):
         """ Parameterized quantum circuit class. Defined by an active space of
-        nelecas electrons in ncas orbitals. Can output one and two-RDMs.
+        nelecas electrons in ncas orbitals. Defines a qnode that outputs a
+        quantum state. Can output one and two-RDMs.
 
         Args:
             ncas: Number of active orbitals

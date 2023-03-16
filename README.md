@@ -35,3 +35,5 @@ auto_oo
 
 ## To-do:
 - Newton-Raphson steps with trust-region method
+- More efficient implementation of RDMs. Measure e_pqrs FermionOperators directly on circuit?
+- More efficient implementation of OO Hessian, not necessary to compute full space RDMs.

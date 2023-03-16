@@ -133,7 +133,7 @@ class OO_energy():
 
             nelecas: Number of active electrons
 
-            oao_mo_coeff (default None): Reference OAO-MO 
+            oao_mo_coeff (default None): Reference OAO-MO
                 coefficients (ndarray)
 
             freeze_active (default: False):
