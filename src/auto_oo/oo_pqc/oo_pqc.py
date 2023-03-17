@@ -69,10 +69,10 @@ class OO_pqc_cost(OO_energy):
 
     def circuit_gradient(self, theta):
         """Calculate the electronic gradient w.r.t. circuit parameters"""
-        # return jacobian(self.energy_from_parameters, theta).reshape(
-        #     np.prod(self.pqc.theta_shape))
-        return jacfwd(self.energy_from_parameters)(theta).reshape(
+        return jacobian(self.energy_from_parameters, theta).reshape(
             np.prod(self.pqc.theta_shape))
+        # return jacfwd(self.energy_from_parameters)(theta).reshape(
+        #     np.prod(self.pqc.theta_shape))
 
     def orbital_gradient(self, theta):
         """Generate analytically the flattened electronic gradient w.r.t. orbital rotation
@@ -84,18 +84,18 @@ class OO_pqc_cost(OO_energy):
 
     def circuit_circuit_hessian(self, theta):
         """Calculate the electronic hessian w.r.t circuit parameters"""
-        # return hessian(self.energy_from_parameters, theta).reshape(
-        #     np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
-        return hessian(self.energy_from_parameters)(theta).reshape(
+        return hessian(self.energy_from_parameters, theta).reshape(
             np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
+        # return hessian(self.energy_from_parameters)(theta).reshape(
+        #     np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
 
     def orbital_circuit_hessian(self, theta):
         """Generate the mixed orbital-pqc parameter hessian by automatic differentation
         of the analytic orbital gradient"""
-        # return jacobian(self.orbital_gradient, theta).reshape(
-        #     self.n_kappa, np.prod(self.pqc.theta_shape))
-        return jacfwd(self.orbital_gradient)(theta).reshape(
+        return jacobian(self.orbital_gradient, theta).reshape(
             self.n_kappa, np.prod(self.pqc.theta_shape))
+        # return jacfwd(self.orbital_gradient)(theta).reshape(
+        #     self.n_kappa, np.prod(self.pqc.theta_shape))
 
     def orbital_orbital_hessian(self, theta):
         """Generate the electronic Hessian w.r.t. orbital rotations"""
@@ -200,14 +200,14 @@ if __name__ == '__main__':
     nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
     pqc = Parameterized_circuit(ncas, nelecas, dev, ansatz='np_fabric',
-                                n_layers=4, add_singles=True)
+                                n_layers=3, add_singles=True)
     # theta = torch.rand_like(pqc.init_zeros())
     theta = pqc.init_zeros()
     state = pqc.qnode(theta)
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
 
     # , oao_mo_coeff = oao_mo_coeff)
-    oo_pqc = OO_pqc_cost(pqc, mol, ncas, nelecas, freeze_active=True)
+    oo_pqc = OO_pqc_cost(pqc, mol, ncas, nelecas, freeze_active=False)
 
     mol.run_rhf()
     mol.run_casscf(ncas, nelecas)
@@ -246,13 +246,13 @@ if __name__ == '__main__':
         theta, kappa))
     # grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
     #     theta,kappa)
-    # hess_auto = hessian(oo_pqc.energy_from_parameters,(theta,kappa))
+    hess_auto = hessian(oo_pqc.energy_from_parameters, (theta, kappa))
     # hess_auto = hessian(oo_pqc.energy_from_parameters,
     #                     argnums=(0,1))(theta, kappa)
 
     grad_C = grad_auto[0].reshape(np.prod(pqc.theta_shape))
-    # hess_CC = hess_auto[0][0].reshape(np.prod(pqc.theta_shape),np.prod(pqc.theta_shape))
-    # hess_CO = hess_auto[1][0].reshape(oo_pqc.n_kappa,np.prod(pqc.theta_shape))
+    hess_CC = hess_auto[0][0].reshape(np.prod(pqc.theta_shape), np.prod(pqc.theta_shape))
+    hess_CO = hess_auto[1][0].reshape(oo_pqc.n_kappa, np.prod(pqc.theta_shape))
     print("time took to generate everything with auto-differentation:", time.time()-t0)
 
     t1 = time.time()
@@ -266,9 +266,9 @@ if __name__ == '__main__':
     print("should all be True:",
           torch.allclose(grad_C, grad_C_exact),
           torch.allclose(grad_auto[1], grad_O_exact))  # ,
-    # torch.allclose(hess_CC, hess_CC_exact),
-    # torch.allclose(hess_CO, hess_CO_exact),
-    # torch.allclose(hess_auto[1][1], hess_OO_exact)
+    torch.allclose(hess_CC, hess_CC_exact),
+    torch.allclose(hess_CO, hess_CO_exact),
+    torch.allclose(hess_auto[1][1], hess_OO_exact)
 
     orbgrad_auto_2d = oo_pqc.kappa_vector_to_matrix(grad_auto[1])
     orbgrad_exact = oo_pqc.analytic_gradient(one_rdm, two_rdm)
