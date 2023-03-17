@@ -9,9 +9,10 @@ Created on Thu Feb  9 16:10:18 2023
 import numpy as np
 import pennylane as qml
 import torch
-from functorch import jacfwd
-from functorch import hessian
-# from torch.autograd.functional import jacobian, hessian
+# These two functions can be used on a high-memory machine:
+# from functorch import jacfwd
+# from functorch import hessian
+from torch.autograd.functional import jacobian, hessian
 
 from auto_oo.oo_energy.oo_energy import OO_energy
 from auto_oo.ansatz.pqc import Parameterized_circuit
