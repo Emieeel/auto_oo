@@ -124,11 +124,11 @@ class OO_pqc_cost(OO_energy):
         return full_circuit_hessian.reshape(size, size)
 
     def full_optimization(self, theta_init, max_iterations=50, conv_tol=1e-10,
-                          verbose=0, **kwargs):
+                          verbose=0, flush=True, **kwargs):
         opt = NewtonStep(verbose=verbose, **kwargs)
         energy_init = self.energy_from_parameters(theta_init).item()
         if verbose is not None:
-            print(f'iter = 000, energy = {energy_init:.12f}')
+            print(f'iter = 000, energy = {energy_init:.12f}', flush=flush)
 
         theta_l = []
         kappa_l = []

@@ -5,4 +5,4 @@ from .oo_energy import (OO_energy,
                         int1e_transform,
                         int2e_transform)
 
-from .integrals import s2, sz
+from .integrals import s2, sz, fermionic_cas_hamiltonian

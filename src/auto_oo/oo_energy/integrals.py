@@ -15,6 +15,8 @@ import torch
 
 import openfermion
 
+from auto_oo.ansatz.pqc import e_pq, e_pqrs
+
 # construct the combinations of delta functions in einstein notation
 # p=q=r=s (same spin):
 _eye4d = torch.einsum('ia, ib, ic, id', *[torch.eye(2)]*4)
@@ -146,7 +148,7 @@ def molecular_hamiltonian_coefficients(nuclear_repulsion,
     return E_constant, one_body_coefficients, two_body_coefficients
 
 
-def fermionic_cas_hamiltonian(c0, c1, c2, e_pq, e_pqrs):
+def fermionic_cas_hamiltonian(c0, c1, c2, up_then_down=False):
     r"""
     Generate active space Hamiltonian in FermionOperator form. For now, only works with
     restricted e_pq and e_pqrs, where p,q,r,s are active indices.
@@ -154,7 +156,7 @@ def fermionic_cas_hamiltonian(c0, c1, c2, e_pq, e_pqrs):
 
     .. math::
         H = E_{\rm nuc} + E_{\rm core} +
-        \sum_{pq}\tilde{h}_{pq} E_{pq} + 
+        \sum_{pq}\tilde{h}_{pq} E_{pq} +
         \sum_{pqrs} g_{pqrs} e_{pqrs}
 
     where :math:`E_{core}` is the mean-field energy of the core (doubly-occupied) orbitals,
@@ -166,10 +168,10 @@ def fermionic_cas_hamiltonian(c0, c1, c2, e_pq, e_pqrs):
     hamiltonian = openfermion.FermionOperator('', c0.item())
     one_body_op = openfermion.FermionOperator()
     for p, q in itertools.product(range(ncas), repeat=2):
-        one_body_op += c1[p, q].item() * e_pq[p][q]
+        one_body_op += c1[p, q].item() * e_pq(p, q, ncas, up_then_down)
     two_body_op = openfermion.FermionOperator()
     for p, q, r, s in itertools.product(range(ncas), repeat=4):
-        two_body_op += c2[p, q, r, s].item() * e_pqrs[p][q][r][s]
+        two_body_op += c2[p, q, r, s].item() * e_pqrs(p, q, r, s, ncas, up_then_down)
     hamiltonian += one_body_op + two_body_op
     return hamiltonian
 
