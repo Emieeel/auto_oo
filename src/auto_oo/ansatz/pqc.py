@@ -73,12 +73,8 @@ def e_pqrs(p, q, r, s, n_modes, restricted=True, up_then_down=False):
     return operator
 
 
-def scipy_csc_to_torch(scipy_csc, dtype=torch.complex128):
-    """ Convert a scipy sparse CSC matrix to pytorch sparse tensor.
-
-    TODO: Newton-Raphson only works if I cast them to dense matrices for some reason....
-          so now it has a similar runtime as the jordan-wigner intops functions, but
-          reduced because it is in the restricted formalism."""
+def scipy_csc_to_torch(scipy_csc, dtype=torch.double):
+    """ Convert a scipy sparse CSC matrix to pytorch sparse CSC tensor."""
     ccol_indices = scipy_csc.indptr
     row_indices = scipy_csc.indices
     values = scipy_csc.data
@@ -86,7 +82,7 @@ def scipy_csc_to_torch(scipy_csc, dtype=torch.complex128):
     return torch.sparse_csc_tensor(
         torch.tensor(ccol_indices, dtype=torch.int64),
         torch.tensor(row_indices, dtype=torch.int64),
-        torch.tensor(values), dtype=dtype, size=size).to_dense().detach()
+        torch.tensor(values.real), dtype=dtype, size=size)
 
 
 def initialize_e_pq(ncas, restricted=True, up_then_down=False):
@@ -190,6 +186,10 @@ class Parameterized_circuit():
             self.hfstate = qml.qchem.hf_state(nelecas, self.n_qubits)
             self.full_theta_shape = qml.GateFabric.shape(self.n_layers, len(
                 self.wires))
+
+            # Calculate the redundant indices of theta, describing initial rotations
+            # between all-occupied or all-virtual states. THESE ARE ONLY REDUNDANT
+            # WHEN STARTING WITH THE HF STATE!
             if self.n_qubits > 4:
                 self.redundant_idx = [x for x in range(0, 2*(self.nelecas//4))]
                 if self.ncas % 2 == 0:
@@ -197,6 +197,7 @@ class Parameterized_circuit():
                                                             2*(self.n_qubits//4))]
             else:
                 self.redundant_idx = []
+
             self.params_idx = [x for x in range(np.prod(self.full_theta_shape))
                                if x not in self.redundant_idx]
             self.theta_shape = len(self.params_idx)
@@ -207,17 +208,22 @@ class Parameterized_circuit():
             self.qnode = ansatz
 
     def uccd_state(self, theta):
+        """Return UCC(S)D state"""
         return uccd_circuit(theta,
                             self.wires, self.s_wires,
                             self.d_wires, self.hfstate, self.add_singles)
 
     def gatefabric_state(self, theta):
+        """The first few parameters of the GateFabric ansatz are redundant,
+        as they are rotations between active all-occupied or all-virtual
+        orbitals. Set them to zero and then return the state."""
         theta_full = torch.zeros(len(self.redundant_idx) + self.theta_shape)
         theta_full[self.params_idx] = theta
         theta_full = theta_full.reshape(self.full_theta_shape)
         return gatefabric_circuit(theta_full, self.wires, self.hfstate)
 
     def init_zeros(self):
+        """Initialize thetas in all-zero"""
         return torch.zeros(self.theta_shape)
 
     def get_rdms_from_state(self, state, restricted=True):
@@ -243,14 +249,15 @@ class Parameterized_circuit():
         two_rdm = torch.zeros((rdm_size, rdm_size, rdm_size, rdm_size))
         for p, q in itertools.product(range(rdm_size), repeat=2):
             e_pq = self.e_pq[p][q]
-            one_rdm[p, q] = torch.matmul(state, torch.matmul(e_pq, state)).real
+            one_rdm[p, q] = torch.matmul(state.real, torch.matmul(e_pq, state.real))
             for r, s in itertools.product(range(rdm_size), repeat=2):
                 e_pqrs = self.e_pqrs[p][q][r][s]
                 two_rdm[p, q, r, s] = torch.matmul(
-                    state, torch.matmul(e_pqrs, state)).real
+                    state.real, torch.matmul(e_pqrs, state.real))
         return one_rdm, two_rdm
 
     def draw_circuit(self, theta):
+        """Draw the qnode circuit for a given theta."""
         return qml.draw(self.qnode, expansion_strategy='device')(theta)
 
     def init_e_pq(self, restricted=True):
@@ -279,17 +286,17 @@ if __name__ == '__main__':
     # theta = pqc.init_zeros()
     # theta = torch.Tensor([[[-0.2,0.3]],
     #                       [[-0.2,0.1]]])
-    # state = pqc.ansatz_state(theta)
-    # print("theta = ", theta)
-    # print("state:", dirac_notation(state.detach().numpy()))
+    state = pqc.qnode(theta)
+    print("theta = ", theta)
+    print("state:", dirac_notation(state.detach().numpy()))
     # # pqc.up_then_down = False
-    # one_rdm, two_rdm = pqc.get_rdms_from_state(state)
-    # plt.imshow(one_rdm)
-    # plt.colorbar()
-    # plt.show()
-    # plt.imshow(two_rdm.reshape(ncas**2, ncas**2))
-    # plt.colorbar()
-    # plt.show()
+    one_rdm, two_rdm = pqc.get_rdms_from_state(state)
+    plt.imshow(one_rdm)
+    plt.colorbar()
+    plt.show()
+    plt.imshow(two_rdm.reshape(ncas**2, ncas**2))
+    plt.colorbar()
+    plt.show()
 
     print(pqc.draw_circuit(theta))
 
