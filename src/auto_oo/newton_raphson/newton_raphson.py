@@ -43,30 +43,30 @@ class NewtonStep():
         f(x + t\Delta x) < f(x) + \alpha t G(x)^T \Delta x
 
     where starting at :math:`t:=1` at each step, :math:`t:=\beta t`.
-
-    Args:
-        alpha (float): the user-defined hyperparameter :math:`\alpha`
-
-        beta (float): the user-defined hyperparameter :math:`\beta`
-
-        mu (float): the user-defined hyperparameter :math:`\mu`
-
-        rho (float): the user-defined hyperparameter :math:`\rho`
-
-        lambda_min (float): the user-defined hyperparameter
-            :math:`\lambda_{\rm min}`
-
-        lmax (int): maximal line search steps
-
-        aug (bool): if True, use augmented Hessian (recommended)
-
-        back (bool): if True, use backtracking line search (recommended)
-
     """
 
     def __init__(self,
                  alpha=0.0001, beta=.5, mu=1e-6, rho=1.1, lmax=20, lambda_min=1e-6,
                  aug=True, verbose=1):
+        r"""
+        Args:
+            alpha (float): the user-defined hyperparameter :math:`\alpha`
+
+            beta (float): the user-defined hyperparameter :math:`\beta`
+
+            mu (float): the user-defined hyperparameter :math:`\mu`
+
+            rho (float): the user-defined hyperparameter :math:`\rho`
+
+            lambda_min (float): the user-defined hyperparameter
+                :math:`\lambda_{\rm min}`
+
+            lmax (int): maximal line search steps
+
+            aug (bool): if True, use augmented Hessian (recommended)
+
+            back (bool): if True, use backtracking line search (recommended)
+        """
         self.alpha = alpha
         self.beta = beta
         self.mu = mu

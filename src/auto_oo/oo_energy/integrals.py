@@ -54,7 +54,7 @@ def active_space_integrals(one_body_integrals,
                            two_body_integrals,
                            occ_idx,
                            act_idx):
-    """    
+    """
     Restricts a molecule at a spatial orbital level to an active space
     This active space may be defined by a list of active indices and
     doubly occupied indices. Note that one_body_integrals and
@@ -70,7 +70,7 @@ def active_space_integrals(one_body_integrals,
          - occ_idx: A list of spatial orbital indices
            indicating which orbitals should be considered doubly occupied.
          - act_idx: A list of spatial orbital indices indicating
-           which orbitals should be considered active.      
+           which orbitals should be considered active.
 
     Returns:
         `tuple`: Tuple with the following entries:
@@ -116,7 +116,7 @@ def molecular_hamiltonian_coefficients(nuclear_repulsion,
                                        occ_idx=None,
                                        act_idx=None):
     '''
-    Transform full-space restricted orbitals to CAS restricted Hamiltonian 
+    Transform full-space restricted orbitals to CAS restricted Hamiltonian
     coefficient's in chemist notation.
 
     The resulting tensors are ready for openfermion.InteractionOperator, and

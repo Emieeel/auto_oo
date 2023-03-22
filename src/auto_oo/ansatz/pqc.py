@@ -132,12 +132,13 @@ def gatefabric_circuit(theta, wires, hfstate):
 
 
 class Parameterized_circuit():
+    """ Parameterized quantum circuit class. Defined by an active space of
+        nelecas electrons in ncas orbitals. Defines a qnode that outputs a
+        quantum state. Can output one and two-RDMs."""
+
     def __init__(self, ncas, nelecas, dev, ansatz='ucc', n_layers=3,
                  add_singles=False):
-        """ Parameterized quantum circuit class. Defined by an active space of
-        nelecas electrons in ncas orbitals. Defines a qnode that outputs a
-        quantum state. Can output one and two-RDMs.
-
+        """
         Args:
             ncas: Number of active orbitals
 

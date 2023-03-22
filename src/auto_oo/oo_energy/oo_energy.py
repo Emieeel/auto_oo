@@ -119,12 +119,12 @@ def non_redundant_indices(occ_idx, act_idx, virt_idx, freeze_active):
 
 
 class OO_energy():
+    """ Orbital Optimized energy class for extracting energies for any given set of
+        RDMs. Can compute analytical orbital gradients and hessians."""
+
     def __init__(self, mol: Moldata_pyscf, ncas, nelecas,
                  oao_mo_coeff=None, freeze_active=False):
         """
-        Orbital Optimized energy class for extracting energies for any given set of
-        RDMs. Can compute orbital gradients and hessians.
-
         Args:
             mol: Moldata_pyscf class containing molecular information like
                 geometry, AO basis, MO basis and 1e- and 2e-integrals
