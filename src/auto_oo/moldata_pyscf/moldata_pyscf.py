@@ -17,12 +17,10 @@ def ao_to_oao(ovlp):
 
 
 class Moldata_pyscf():
-    # Initialize attributes of a Parameterized Active Space class:
     def __init__(self, geometry, basis, **kwargs):
         """
-        Class that can generate energies, orbital gradients and orbital
-        Hessians of an active space Hamiltonian from RDMs.
-
+        Class that can import molecular info from PySCF
+ 
         Args:
             geometry: geometry of molecule
             basis: name of basis set          
