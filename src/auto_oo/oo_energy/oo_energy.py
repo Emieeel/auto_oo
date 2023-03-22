@@ -346,7 +346,20 @@ class OO_energy():
         return nonredundant_hess
 
     def orbital_optimization(self, one_rdm, two_rdm,
-                             conv_tol=1e-8, max_iterations=100, verbose=1, **kwargs):
+                             conv_tol=1e-8, max_iterations=100, verbose=0, **kwargs):
+        r"""
+        Optimize the orbitals using the damped Newton method. The MO coefficients
+        are automatically transformed throughout the procedure as the attribute of
+        the OO_energy class.
+
+        Args:
+            one_rdm (2D torch.Tensor): One-particle reduced density matrix
+
+            two_rdm (4D torch.Tensor): Two-particle reduced density matrix
+
+        Returns:
+            energy_l (list): Energy trajectory of the procedure
+        """
 
         objective_fn = partial(self.energy_from_kappa,
                                one_rdm=one_rdm, two_rdm=two_rdm)

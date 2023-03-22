@@ -148,7 +148,7 @@ def molecular_hamiltonian_coefficients(nuclear_repulsion,
     return E_constant, one_body_coefficients, two_body_coefficients
 
 
-def fermionic_cas_hamiltonian(c0, c1, c2, up_then_down=False):
+def fermionic_cas_hamiltonian(c0, c1, c2, restricted=True, up_then_down=False):
     r"""
     Generate active space Hamiltonian in FermionOperator form. For now, only works with
     restricted e_pq and e_pqrs, where p,q,r,s are active indices.
@@ -168,10 +168,10 @@ def fermionic_cas_hamiltonian(c0, c1, c2, up_then_down=False):
     hamiltonian = openfermion.FermionOperator('', c0.item())
     one_body_op = openfermion.FermionOperator()
     for p, q in itertools.product(range(ncas), repeat=2):
-        one_body_op += c1[p, q].item() * e_pq(p, q, ncas, up_then_down)
+        one_body_op += c1[p, q].item() * e_pq(p, q, ncas, restricted, up_then_down)
     two_body_op = openfermion.FermionOperator()
     for p, q, r, s in itertools.product(range(ncas), repeat=4):
-        two_body_op += c2[p, q, r, s].item() * e_pqrs(p, q, r, s, ncas, up_then_down)
+        two_body_op += c2[p, q, r, s].item() * e_pqrs(p, q, r, s, ncas, restricted, up_then_down)
     hamiltonian += one_body_op + two_body_op
     return hamiltonian
 
