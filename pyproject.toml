@@ -11,7 +11,7 @@ authors = [
 ]
 description = "OO with automatic differentation"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8" # Pytorch requires at least python 3.8
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",

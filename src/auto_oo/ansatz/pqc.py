@@ -121,13 +121,9 @@ def uccd_circuit(theta, wires, s_wires, d_wires, hfstate, add_singles=False):
 
 
 def gatefabric_circuit(theta, wires, hfstate):
-    """ Outputs NP fabric ansatz state, adapted to up-then-down
-    JW ordering"""
-    # l2 = list(range(1, len(wires), 2))
-    # l1 = list(range(0, len(wires), 2))
+    """ Outputs NP fabric ansatz state"""
     qml.GateFabric(theta,
                    wires=wires, init_state=hfstate, include_pi=False)
-    # qml.Permute(l1 + l2, wires)
     return qml.state()
 
 
