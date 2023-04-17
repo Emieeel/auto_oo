@@ -142,3 +142,6 @@ tmp*
 **/auto_oo.egg-info/
 **/__pycache__/
 
+# VS code stuff
+**/.vscode/
+
