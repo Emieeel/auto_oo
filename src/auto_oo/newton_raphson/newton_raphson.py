@@ -156,7 +156,7 @@ class NewtonStep():
 
         # do backtracking line search
         if test_energy > energy + wolfe(t, gradient, dp, alpha=self.alpha):
-            assert(wolfe(t, gradient, dp, alpha=self.alpha) < 0)
+            assert (wolfe(t, gradient, dp, alpha=self.alpha) < 0)
             num = 0
             if self.verbose:
                 print("test_energy:", test_energy.item(),

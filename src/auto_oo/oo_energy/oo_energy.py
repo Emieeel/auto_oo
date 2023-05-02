@@ -114,7 +114,7 @@ def non_redundant_indices(occ_idx, act_idx, virt_idx, freeze_active):
             # l_idx in virt_idx and r_idx in occ_idx)):
             params_idx = np.append(params_idx, [num])
         num += 1
-    assert(n_kappa == len(params_idx))
+    assert (n_kappa == len(params_idx))
     return params_idx
 
 
