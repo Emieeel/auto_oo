@@ -11,103 +11,47 @@ import itertools
 import torch
 import numpy as np
 import pennylane as qml
+from pennylane import math
 import openfermion
 
-from auto_oo.ansatz.uccd import UCCD
+from auto_oo.ansatze.uccd import UCCD
+from auto_oo.utils.active_space import e_pq, e_pqrs, scipy_csc_to_torch
 
 
-def e_pq(p, q, n_modes, restricted=True, up_then_down=False):
-    r"""
-    Can generate either spin-unrestricted single excitation operator:
-
-    .. math::
-        E_{pq} = a_{p}^\dagger a_{q}
-    where :math:`p` and :math:`q` are composite spatial/spin indices,
-    or spin-restricted single excitation operator:
-
-    .. math::
-            E_{pq} = \sum_\sigma a_{p \sigma}^\dagger a_{q \sigma}
-    where :math:`p` and :math:`q` are spatial indices. For the spin-
-    restricted case, One can either select up-then-down convention,
-    or up-down-up-down.
-    """
-    if restricted:
-        if up_then_down:
-            operator = (openfermion.FermionOperator(f'{p}^ {q}') +
-                        openfermion.FermionOperator(f'{p+n_modes}^ {q + n_modes}'))
-        else:
-            operator = (openfermion.FermionOperator(f'{2*p}^ {2*q}') +
-                        openfermion.FermionOperator(f'{2*p+1}^ {2*q+1}'))
-    else:
-        operator = openfermion.FermionOperator(f'{p}^ {q}')
-
-    return operator
-
-
-def e_pqrs(p, q, r, s, n_modes, restricted=True, up_then_down=False):
-    r"""
-    Can generate either spin-unrestricted double excitation operator:
-
-    .. math::
-        e_{pqrs} = a_{p}^\dagger a_{q}^\dagger a_{r} a_{s}
-    where :math:`p` and :math:`q` are composite spatial/spin indices,
-    or spin-restricted double excitation operator:
-
-    .. math::
-        e_{pqrs} = \sum_{\sigma \tau} a_{p \sigma}^\dagger a_{
-            r \tau}^\dagger a_{s \tau} a_{q \sigma}
-                 = E_{pq}E_{rs} -\delta_{qr}E_{ps}
-    where the indices are spatial indices.
-
-    Indices in the restricted case are in chemist order, meant to be
-    contracted with two-electron integrals in chemist order to obtain the
-    Hamiltonian or to obtain the two-electron RDM.
-    """
-    if restricted:
-        operator = e_pq(p, q, n_modes, restricted, up_then_down) * e_pq(
-            r, s, n_modes, restricted, up_then_down)
-        if q == r:
-            operator += - e_pq(p, s, n_modes, restricted, up_then_down)
-    else:
-        operator = openfermion.FermionOperator(f'{p}^ {q}^ {r} {s}')
-    return operator
-
-
-def scipy_csc_to_torch(scipy_csc, dtype=torch.double):
-    """ Convert a scipy sparse CSC matrix to pytorch sparse CSC tensor."""
-    ccol_indices = scipy_csc.indptr
-    row_indices = scipy_csc.indices
-    values = scipy_csc.data
-    size = scipy_csc.shape
-    return torch.sparse_csc_tensor(
-        torch.tensor(ccol_indices, dtype=torch.int64),
-        torch.tensor(row_indices, dtype=torch.int64),
-        torch.tensor(values.real), dtype=dtype, size=size)
-
-
-def initialize_e_pq(ncas, restricted=True, up_then_down=False):
-    """Initialize full e_pq operator in pytorch CSC sparse format"""
+def initialize_e_pq(ncas, restricted=True, up_then_down=False, interface='scipy'):
+    """Initialize full e_pq operator in (pytorch) CSC sparse format"""
     if restricted:
         num_ind = ncas
     else:
         num_ind = 2 * ncas
-    return [[scipy_csc_to_torch(
-        openfermion.get_sparse_operator(
-            e_pq(p, q, num_ind, restricted, up_then_down), n_qubits=2*ncas))
-        for q in range(num_ind)] for p in range(num_ind)]
+    if interface == 'torch':
+        return [[scipy_csc_to_torch(
+            openfermion.get_sparse_operator(
+                e_pq(p, q, num_ind, restricted, up_then_down), n_qubits=2*ncas))
+            for q in range(num_ind)] for p in range(num_ind)]
+    else:
+        return [[openfermion.get_sparse_operator(
+                e_pq(p, q, num_ind, restricted, up_then_down), n_qubits=2*ncas)
+            for q in range(num_ind)] for p in range(num_ind)]
 
 
-def initialize_e_pqrs(ncas, restricted=True, up_then_down=False):
-    """Initialize full e_pqrs operator in pytorch CSC sparse format"""
+def initialize_e_pqrs(ncas, restricted=True, up_then_down=False, interface='scipy'):
+    """Initialize full e_pqrs operator in (pytorch) CSC sparse format"""
     if restricted:
         num_ind = ncas
     else:
         num_ind = 2 * ncas
-    return [[[[scipy_csc_to_torch(
-        openfermion.get_sparse_operator(
-            e_pqrs(p, q, r, s, num_ind, restricted, up_then_down), n_qubits=2*ncas))
-        for s in range(num_ind)] for r in range(num_ind)]
-        for q in range(num_ind)] for p in range(num_ind)]
+    if interface == 'torch':
+        return [[[[scipy_csc_to_torch(
+            openfermion.get_sparse_operator(
+                e_pqrs(p, q, r, s, num_ind, restricted, up_then_down), n_qubits=2*ncas))
+            for s in range(num_ind)] for r in range(num_ind)]
+            for q in range(num_ind)] for p in range(num_ind)]
+    else:
+        return [[[[openfermion.get_sparse_operator(
+                e_pqrs(p, q, r, s, num_ind, restricted, up_then_down), n_qubits=2*ncas)
+            for s in range(num_ind)] for r in range(num_ind)]
+            for q in range(num_ind)] for p in range(num_ind)]
 
 
 def uccd_circuit(theta, wires, s_wires, d_wires, hfstate, add_singles=False):
@@ -133,7 +77,7 @@ class Parameterized_circuit():
         quantum state. Can output one and two-RDMs."""
 
     def __init__(self, ncas, nelecas, dev, ansatz='ucc', n_layers=3,
-                 add_singles=False):
+                 add_singles=False, interface='torch', diff_method='backprop'):
         """
         Args:
             ncas: Number of active orbitals
@@ -173,7 +117,7 @@ class Parameterized_circuit():
                 self.singles, self.doubles)
             self.hfstate = qml.qchem.hf_state(nelecas, self.n_qubits)
             self.wires = range(self.n_qubits)
-            self.qnode = qml.qnode(dev, interface='torch', diff_method='backprop')(
+            self.qnode = qml.qnode(dev, interface=interface, diff_method='backprop')(
                 self.uccd_state)
 
         elif ansatz == 'np_fabric':
@@ -198,7 +142,7 @@ class Parameterized_circuit():
             self.params_idx = [x for x in range(np.prod(self.full_theta_shape))
                                if x not in self.redundant_idx]
             self.theta_shape = len(self.params_idx)
-            self.qnode = qml.qnode(dev, interface='torch', diff_method='backprop')(
+            self.qnode = qml.qnode(dev, interface=interface, diff_method='backprop')(
                 self.gatefabric_state)
 
         else:
@@ -214,7 +158,7 @@ class Parameterized_circuit():
         """The first few parameters of the GateFabric ansatz are redundant,
         as they are rotations between active all-occupied or all-virtual
         orbitals. Set them to zero and then return the state."""
-        theta_full = torch.zeros(len(self.redundant_idx) + self.theta_shape)
+        theta_full = math.zeros(len(self.redundant_idx) + self.theta_shape)
         theta_full[self.params_idx] = theta
         theta_full = theta_full.reshape(self.full_theta_shape)
         return gatefabric_circuit(theta_full, self.wires, self.hfstate)
@@ -272,7 +216,7 @@ if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
 
-    ncas = 3
+    ncas = 2
     nelecas = 2
     dev = qml.device('default.qubit', wires=2*ncas)
     pqc = Parameterized_circuit(ncas, nelecas, dev,

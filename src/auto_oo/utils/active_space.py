@@ -15,8 +15,6 @@ import torch
 
 import openfermion
 
-from auto_oo.ansatz.pqc import e_pq, e_pqrs
-
 # construct the combinations of delta functions in einstein notation
 # p=q=r=s (same spin):
 _eye4d = torch.einsum('ia, ib, ic, id', *[torch.eye(2)]*4)
@@ -26,6 +24,75 @@ _X = torch.Tensor([[0., 1.], [1., 0.]])
 _mix4d = torch.einsum('ia, ib, ic, id', torch.eye(2), _X, _X, torch.eye(2))
 
 _spin_comp_tensor = (_eye4d + _mix4d) / 2
+
+
+def e_pq(p, q, n_modes, restricted=True, up_then_down=False):
+    r"""
+    Can generate either spin-unrestricted single excitation operator:
+
+    .. math::
+        E_{pq} = a_{p}^\dagger a_{q}
+    where :math:`p` and :math:`q` are composite spatial/spin indices,
+    or spin-restricted single excitation operator:
+
+    .. math::
+            E_{pq} = \sum_\sigma a_{p \sigma}^\dagger a_{q \sigma}
+    where :math:`p` and :math:`q` are spatial indices. For the spin-
+    restricted case, One can either select up-then-down convention,
+    or up-down-up-down.
+    """
+    if restricted:
+        if up_then_down:
+            operator = (openfermion.FermionOperator(f'{p}^ {q}') +
+                        openfermion.FermionOperator(f'{p+n_modes}^ {q + n_modes}'))
+        else:
+            operator = (openfermion.FermionOperator(f'{2*p}^ {2*q}') +
+                        openfermion.FermionOperator(f'{2*p+1}^ {2*q+1}'))
+    else:
+        operator = openfermion.FermionOperator(f'{p}^ {q}')
+
+    return operator
+
+
+def e_pqrs(p, q, r, s, n_modes, restricted=True, up_then_down=False):
+    r"""
+    Can generate either spin-unrestricted double excitation operator:
+
+    .. math::
+        e_{pqrs} = a_{p}^\dagger a_{q}^\dagger a_{r} a_{s}
+    where :math:`p` and :math:`q` are composite spatial/spin indices,
+    or spin-restricted double excitation operator:
+
+    .. math::
+        e_{pqrs} = \sum_{\sigma \tau} a_{p \sigma}^\dagger a_{
+            r \tau}^\dagger a_{s \tau} a_{q \sigma}
+                 = E_{pq}E_{rs} -\delta_{qr}E_{ps}
+    where the indices are spatial indices.
+
+    Indices in the restricted case are in chemist order, meant to be
+    contracted with two-electron integrals in chemist order to obtain the
+    Hamiltonian or to obtain the two-electron RDM.
+    """
+    if restricted:
+        operator = e_pq(p, q, n_modes, restricted, up_then_down) * e_pq(
+            r, s, n_modes, restricted, up_then_down)
+        if q == r:
+            operator += - e_pq(p, s, n_modes, restricted, up_then_down)
+    else:
+        operator = openfermion.FermionOperator(f'{p}^ {q}^ {r} {s}')
+    return operator
+
+
+def scipy_csc_to_torch(scipy_csc, dtype=torch.double):
+    """ Convert a scipy sparse CSC matrix to pytorch sparse CSC tensor."""
+    ccol_indices = scipy_csc.indptr
+    row_indices = scipy_csc.indices
+    values = scipy_csc.data
+    size = scipy_csc.shape
+    return torch.sparse_csc_tensor(
+        torch.tensor(ccol_indices, dtype=torch.int64),
+        torch.tensor(row_indices, dtype=torch.int64),
+        torch.tensor(values.real), dtype=dtype, size=size)
 
 
 def restricted_to_unrestricted(tensor, alpha_then_beta=False):
