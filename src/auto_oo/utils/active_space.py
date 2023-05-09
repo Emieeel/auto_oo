@@ -10,6 +10,7 @@ import itertools
 
 import numpy as np
 import pennylane as qml
+from pennylane import math
 
 import torch
 
@@ -17,11 +18,11 @@ import openfermion
 
 # construct the combinations of delta functions in einstein notation
 # p=q=r=s (same spin):
-_eye4d = torch.einsum('ia, ib, ic, id', *[torch.eye(2)]*4)
+_eye4d = math.einsum('ia, ib, ic, id', *[math.eye(2)]*4)
 
 # p=q!=r=s (mix):
-_X = torch.Tensor([[0., 1.], [1., 0.]])
-_mix4d = torch.einsum('ia, ib, ic, id', torch.eye(2), _X, _X, torch.eye(2))
+_X = math.array([[0., 1.], [1., 0.]])
+_mix4d = math.einsum('ia, ib, ic, id', math.eye(2), _X, _X, math.eye(2))
 
 _spin_comp_tensor = (_eye4d + _mix4d) / 2
 
@@ -83,7 +84,7 @@ def e_pqrs(p, q, r, s, n_modes, restricted=True, up_then_down=False):
     return operator
 
 
-def scipy_csc_to_torch(scipy_csc, dtype=torch.double):
+def scipy_csc_to_torch(scipy_csc, dtype=torch.complex128):
     """ Convert a scipy sparse CSC matrix to pytorch sparse CSC tensor."""
     ccol_indices = scipy_csc.indptr
     row_indices = scipy_csc.indices
@@ -92,7 +93,7 @@ def scipy_csc_to_torch(scipy_csc, dtype=torch.double):
     return torch.sparse_csc_tensor(
         torch.tensor(ccol_indices, dtype=torch.int64),
         torch.tensor(row_indices, dtype=torch.int64),
-        torch.tensor(values.real), dtype=dtype, size=size)
+        torch.tensor(values), dtype=dtype, size=size)
 
 
 def restricted_to_unrestricted(tensor, alpha_then_beta=False):
@@ -106,15 +107,18 @@ def restricted_to_unrestricted(tensor, alpha_then_beta=False):
     s = tensor.size()
     if len(s) == 2:  # two-electron integrals
         if alpha_then_beta:
-            tensor = torch.einsum('pq, ab -> apbq', tensor, torch.eye(2))
+            tensor = math.einsum('pq, ab -> apbq', tensor, math.convert_like(
+                math.eye(2), tensor))
         else:
-            tensor = torch.einsum('pq, ab -> paqb', tensor, torch.eye(2))
+            tensor = math.einsum('pq, ab -> paqb', tensor, math.convert_like(
+                math.eye(2), tensor))
     elif len(s) == 4:
-        tensor = torch.einsum('ijkl, abcd -> iajbkcld', tensor, _spin_comp_tensor)
+        tensor = math.einsum('ijkl, abcd -> iajbkcld', tensor, math.convert_like(
+            _spin_comp_tensor, tensor))
     else:
         raise ValueError("Only shape 2- or 4-dimensional tensors supported.")
 
-    return torch.reshape(tensor, [i*2 for i in s])
+    return math.reshape(tensor, [i*2 for i in s])
 
 
 def active_space_integrals(one_body_integrals,
@@ -148,11 +152,11 @@ def active_space_integrals(one_body_integrals,
     """
     # --- Determine core constant ---
     core_constant = (
-        2 * torch.sum(one_body_integrals[occ_idx, occ_idx]) +  # i^ j
-        2 * torch.sum(two_body_integrals[
+        2 * math.sum(one_body_integrals[occ_idx, occ_idx]) +  # i^ j
+        2 * math.sum(two_body_integrals[
             occ_idx, occ_idx, :, :][
             :, occ_idx, occ_idx])  # i^ j^ j i
-        - torch.sum(two_body_integrals[
+        - math.sum(two_body_integrals[
             occ_idx, :, :, occ_idx][
             :, occ_idx, occ_idx])  # i^ j^ i j
     )
@@ -164,11 +168,11 @@ def active_space_integrals(one_body_integrals,
     # sum over i in occ_idx
     as_one_body_integrals = (
         one_body_integrals[np.ix_(*[act_idx]*2)]
-        + 2 * torch.sum(two_body_integrals[:, :, occ_idx, occ_idx
-                                           ][act_idx, :, :][:, act_idx, :],
-                        dim=2)  # i^ p^ q i
-        - torch.sum(two_body_integrals[:, occ_idx, occ_idx, :][
-            act_idx, :, :][:, :, act_idx], dim=1)  # i^ p^ i q
+        + 2 * math.sum(two_body_integrals[:, :, occ_idx, occ_idx
+                                          ][act_idx, :, :][:, act_idx, :],
+                       axis=2)  # i^ p^ q i
+        - math.sum(two_body_integrals[:, occ_idx, occ_idx, :][
+            act_idx, :, :][:, :, act_idx], axis=1)  # i^ p^ i q
     )
 
     # Restrict integral ranges and change M appropriately

@@ -8,7 +8,6 @@ Created on Thu Feb  9 15:39:19 2023
 
 import itertools
 
-import torch
 import numpy as np
 import pennylane as qml
 from pennylane import math
@@ -101,6 +100,7 @@ class Parameterized_circuit():
 
         self.dev = dev
         self.add_singles = add_singles
+        self.interface = interface
 
         self.e_pq = None
         self.e_pqrs = None
@@ -124,7 +124,8 @@ class Parameterized_circuit():
             self.n_layers = n_layers
             self.up_then_down = False
             self.wires = list(range(self.n_qubits))
-            self.hfstate = qml.qchem.hf_state(nelecas, self.n_qubits)
+            self.hfstate = math.convert_like(
+                qml.qchem.hf_state(nelecas, self.n_qubits), math.zeros(1, like=interface))
             self.full_theta_shape = qml.GateFabric.shape(self.n_layers, len(
                 self.wires))
 
@@ -139,8 +140,10 @@ class Parameterized_circuit():
             else:
                 self.redundant_idx = []
 
-            self.params_idx = [x for x in range(np.prod(self.full_theta_shape))
-                               if x not in self.redundant_idx]
+            self.params_idx = math.convert_like(
+                np.array([x for x in range(np.prod(self.full_theta_shape))
+                          if x not in self.redundant_idx]),
+                math.zeros(1, like=interface))
             self.theta_shape = len(self.params_idx)
             self.qnode = qml.qnode(dev, interface=interface, diff_method='backprop')(
                 self.gatefabric_state)
@@ -158,14 +161,15 @@ class Parameterized_circuit():
         """The first few parameters of the GateFabric ansatz are redundant,
         as they are rotations between active all-occupied or all-virtual
         orbitals. Set them to zero and then return the state."""
-        theta_full = math.zeros(len(self.redundant_idx) + self.theta_shape)
-        theta_full[self.params_idx] = theta
-        theta_full = theta_full.reshape(self.full_theta_shape)
+        theta_full = math.convert_like(
+            math.zeros(len(self.redundant_idx) + self.theta_shape), theta)
+        theta_full = math.set_index(theta_full, self.params_idx, theta)
+        theta_full = math.reshape(theta_full, self.full_theta_shape)
         return gatefabric_circuit(theta_full, self.wires, self.hfstate)
 
     def init_zeros(self):
         """Initialize thetas in all-zero"""
-        return torch.zeros(self.theta_shape)
+        return math.cast(math.zeros(self.theta_shape, like=self.interface), np.float64)
 
     def get_rdms_from_state(self, state, restricted=True):
         r"""
@@ -186,15 +190,13 @@ class Parameterized_circuit():
             rdm_size = self.ncas
         else:
             rdm_size = 2 * self.ncas
-        one_rdm = torch.zeros((rdm_size, rdm_size))
-        two_rdm = torch.zeros((rdm_size, rdm_size, rdm_size, rdm_size))
+        one_rdm = math.convert_like(math.zeros((rdm_size, rdm_size)), state)
+        two_rdm = math.convert_like(math.zeros((rdm_size, rdm_size, rdm_size, rdm_size)), state)
         for p, q in itertools.product(range(rdm_size), repeat=2):
-            e_pq = self.e_pq[p][q]
-            one_rdm[p, q] = torch.matmul(state.real, torch.matmul(e_pq, state.real))
+            math.set_index(one_rdm, (p, q), (state @ (self.e_pq[p][q] @ state)).real)
             for r, s in itertools.product(range(rdm_size), repeat=2):
-                e_pqrs = self.e_pqrs[p][q][r][s]
-                two_rdm[p, q, r, s] = torch.matmul(
-                    state.real, torch.matmul(e_pqrs, state.real))
+                math.set_index(two_rdm, (p, q, r, s),
+                               (state @ (self.e_pqrs[p][q][r][s] @ state)).real)
         return one_rdm, two_rdm
 
     def draw_circuit(self, theta):
@@ -204,32 +206,40 @@ class Parameterized_circuit():
     def init_e_pq(self, restricted=True):
         if self.e_pq is None:
             self.e_pq = initialize_e_pq(self.ncas, restricted,
-                                        self.up_then_down)
+                                        self.up_then_down, self.interface)
 
     def init_e_pqrs(self, restricted=True):
         if self.e_pqrs is None:
             self.e_pqrs = initialize_e_pqrs(self.ncas, restricted,
-                                            self.up_then_down)
+                                            self.up_then_down, self.interface)
 
 
 if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
 
-    ncas = 2
-    nelecas = 2
+    ncas = 3
+    nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
+    interface = 'jax'
+
+    np.random.seed(30)
+
     pqc = Parameterized_circuit(ncas, nelecas, dev,
-                                ansatz='np_fabric', n_layers=2, add_singles=False)
+                                ansatz='np_fabric', n_layers=2,
+                                add_singles=False, interface=interface)
     print(pqc.redundant_idx)
 
-    theta = torch.rand_like(pqc.init_zeros())
+    theta = math.convert_like(
+        math.random.rand(*math.shape(pqc.init_zeros())), math.zeros(1, like=interface))
+    theta = math.cast(theta, np.float32)
     # theta = pqc.init_zeros()
     # theta = torch.Tensor([[[-0.2,0.3]],
     #                       [[-0.2,0.1]]])
     state = pqc.qnode(theta)
     print("theta = ", theta)
-    print("state:", dirac_notation(state.detach().numpy()))
+    print("state:", dirac_notation(math.convert_like(math.detach(state),
+                                                     math.zeros(1, like='numpy'))))
     # # pqc.up_then_down = False
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
     plt.imshow(one_rdm)
@@ -240,5 +250,22 @@ if __name__ == '__main__':
     plt.show()
 
     print(pqc.draw_circuit(theta))
+
+    def rdms_from_theta(param):
+        return pqc.get_rdms_from_state(pqc.qnode(param))
+
+    theta.requires_grad = True
+    if interface == 'torch':
+        import torch
+        grad = torch.autograd.functional.jacobian(rdms_from_theta, theta)
+        # rdms = rdms_from_theta(theta)
+        # rdms.backward()
+        # grad = theta.grad
+    elif interface == 'autograd':
+        grad = qml.grad(rdms_from_theta, argnum=0)(theta)
+
+    #
+
+    # grad_check = qml.jacobian(rdms_from_theta, argnum=0)(theta)
 
     # # def cost(theta):

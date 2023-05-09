@@ -20,5 +20,6 @@ from .utils import (
     s2,
     sz,
     molecular_hamiltonian_coefficients,
-    fermionic_cas_hamiltonian
+    fermionic_cas_hamiltonian,
+    scipy_csc_to_torch
 )

@@ -123,7 +123,7 @@ class OO_energy:
     RDMs. Can compute analytical orbital gradients and hessians."""
 
     def __init__(self, mol: Moldata_pyscf, ncas, nelecas,
-                 oao_mo_coeff=None, freeze_active=False):
+                 oao_mo_coeff=None, freeze_active=False, interface='torch'):
         """
         Args:
             mol: Moldata_pyscf class containing molecular information like
@@ -140,13 +140,17 @@ class OO_energy:
                 Freeze active-active oo indices
         """
 
+        like = math.zeros(1, like=interface)
+
         if oao_mo_coeff is None:
             mol.run_rhf()
             # print("Initialized with canonical HF MOs")
-            self.oao_mo_coeff = torch.from_numpy(mo_ao_to_mo_oao(mol.hf.mo_coeff, mol.overlap))
+            self.oao_mo_coeff = math.convert_like(
+                mo_ao_to_mo_oao(mol.hf.mo_coeff, mol.overlap), like)
         else:
-            self.oao_mo_coeff = oao_mo_coeff
-            print("Interface:", math.get_interface(oao_mo_coeff))
+            self.oao_mo_coeff = math.convert_like(oao_mo_coeff, like)
+
+        print("Interface:", math.get_interface(like))
 
         # Set molecular data
         self.int1e_ao = math.convert_like(mol.int1e_ao, self.oao_mo_coeff)
@@ -254,7 +258,7 @@ class OO_energy:
         """
         fock_C = self.fock_core(int1e_mo, int2e_mo)
         fock_A = self.fock_active(int2e_mo, one_rdm)
-        fock_general = math.zeros(int1e_mo.shape)
+        fock_general = math.zeros_like(int1e_mo)
         fock_general[self.occ_idx, :] = 2 * math.transpose(
             fock_C[:, self.occ_idx] + fock_A[:, self.occ_idx])
         fock_general[self.act_idx, :] = math.einsum(
@@ -264,7 +268,7 @@ class OO_energy:
             int2e_mo[:, :, :, self.act_idx][:, :, self.act_idx, :][:, self.act_idx, :, :])
         return fock_general
 
-    def fock_inactive(self, int1e_mo, int2e_mo):
+    def fock_core(self, int1e_mo, int2e_mo):
         r"""
         Generate the inactive Fock matrix given by:
 
@@ -273,9 +277,9 @@ class OO_energy:
         """
         g_tilde = (
             2 * math.sum(int2e_mo[:, :, self.occ_idx, self.occ_idx],
-                         dim=-1)  # p^ i^ i q
+                         axis=-1)  # p^ i^ i q
             - math.sum(int2e_mo[:, self.occ_idx, self.occ_idx, :],
-                       dim=1))  # p^ i^ q i
+                       axis=1))  # p^ i^ q i
         return int1e_mo + g_tilde
 
     def fock_active(self, int2e_mo, one_rdm):
@@ -292,7 +296,7 @@ class OO_energy:
                                 (0, 3, 2, 1)))
         return math.einsum('wx, pqwx', one_rdm, g_tilde)
 
-    def analytic_gradient(self, int1e_mo, int2e_mo, one_rdm, two_rdm):
+    def analytic_gradient_from_integrals(self, int1e_mo, int2e_mo, one_rdm, two_rdm):
         r"""
         Computes the analytic gradient in terms of the generalized Fock matrix:
 
@@ -303,7 +307,7 @@ class OO_energy:
             int1e_mo, int2e_mo, one_rdm, two_rdm)
         return 2 * (fock_general - math.transpose(fock_general))
 
-    def analytic_hessian(self, int1e_mo, int2e_mo, one_rdm, two_rdm):
+    def analytic_hessian_from_integrals(self, int1e_mo, int2e_mo, one_rdm, two_rdm):
         r"""
         Computes the analytic Hessian in terms of one and two-body integrals
         :math:`h_{pq}` and :math:`g_{pqrs}`, the (full) one-particle reduced
@@ -369,7 +373,7 @@ class OO_energy:
             'wv,ij->iwvj', one_rdm, math.eye(len(self.occ_idx)))
         two_full[np.ix_(self.act_idx, self.occ_idx,
                         self.occ_idx, self.act_idx)] = -math.einsum(
-            'wx,ij->wjiv', one_rdm, math.eye(len(self.occ_idx)))
+            'wv,ij->vjiw', one_rdm, math.eye(len(self.occ_idx)))
         two_full[np.ix_(*[self.act_idx]*4)] = two_rdm
         return one_full, two_full
 
@@ -388,13 +392,35 @@ class OO_energy:
         return y0 + y1 + y2
 
     def full_hessian_to_matrix(self, full_hess):
-        """Convert the full Hessian (nao,nao,nao,nao) torch.Tensor to a matrix with only
+        """Convert the full Hessian (nao,nao,nao,nao) to a matrix with only
         non-redundant indices."""
-        tril_indices = torch.tril_indices(row=self.nao, col=self.nao, offset=-1)
+        tril_indices = np.tril_indices(self.nao, k=-1)
         partial_hess = full_hess[tril_indices[0], tril_indices[1], :, :]
         reduced_hess = partial_hess[:, tril_indices[0], tril_indices[1]]
         nonredundant_hess = reduced_hess[self.params_idx, :][:, self.params_idx]
         return nonredundant_hess
+
+    def analytic_gradient(self, one_rdm, two_rdm, mo_coeff=None):
+        if mo_coeff is None:
+            mo_coeff = self.mo_coeff
+        else:
+            mo_coeff = mo_coeff
+
+        int1e_mo = int1e_transform(self.int1e_ao, mo_coeff)
+        int2e_mo = int2e_transform(self.int2e_ao, mo_coeff)
+
+        return self.analytic_gradient_from_integrals(int1e_mo, int2e_mo, one_rdm, two_rdm)
+
+    def analytic_hessian(self, one_rdm, two_rdm, mo_coeff=None):
+        if mo_coeff is None:
+            mo_coeff = self.mo_coeff
+        else:
+            mo_coeff = mo_coeff
+
+        int1e_mo = int1e_transform(self.int1e_ao, mo_coeff)
+        int2e_mo = int2e_transform(self.int2e_ao, mo_coeff)
+
+        return self.analytic_hessian_from_integrals(int1e_mo, int2e_mo, one_rdm, two_rdm)
 
     def orbital_optimization(
         self, one_rdm, two_rdm, conv_tol=1e-8, max_iterations=100, verbose=0, **kwargs
@@ -405,9 +431,9 @@ class OO_energy:
         the OO_energy class.
 
         Args:
-            one_rdm (2D torch.Tensor): One-particle reduced density matrix
+            one_rdm (2D tensor): One-particle reduced density matrix
 
-            two_rdm (4D torch.Tensor): Two-particle reduced density matrix
+            two_rdm (4D tensor): Two-particle reduced density matrix
 
         Returns:
             energy_l (list): Energy trajectory of the procedure
@@ -423,7 +449,7 @@ class OO_energy:
             print(f"Starting energy: {energy:.12f}")
 
         for n in range(max_iterations):
-            kappa = torch.zeros(self.n_kappa)
+            kappa = math.convert_like(math.zeros(self.n_kappa), one_rdm)
             gradient = self.kappa_matrix_to_vector(self.analytic_gradient(one_rdm, two_rdm))
             hessian = self.full_hessian_to_matrix(self.analytic_hessian(one_rdm, two_rdm))
 

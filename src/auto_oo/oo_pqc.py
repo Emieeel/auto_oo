@@ -8,7 +8,7 @@ Created on Thu Feb  9 16:10:18 2023
 
 import numpy as np
 import pennylane as qml
-import torch
+from pennylane import math
 
 # These two functions can be used on a high-memory machine:
 # from functorch import jacfwd
@@ -112,19 +112,19 @@ class OO_pqc(OO_energy):
 
     def full_gradient(self, theta):
         """Return the concatenated gradient of circuit parameters and orbital rotations"""
-        return torch.cat((self.circuit_gradient(theta), self.orbital_gradient(theta)))
+        return math.concatenate((self.circuit_gradient(theta), self.orbital_gradient(theta)))
 
     def full_hessian(self, theta):
         """Return the full hessian of circuit parameters and orbital rotations"""
         hessian_vqe_vqe = self.circuit_circuit_hessian(theta)
         hessian_vqe_oo = self.orbital_circuit_hessian(theta)
         hessian_oo_oo = self.orbital_orbital_hessian(theta)
-        hessian = torch.cat(
+        hessian = math.concatenate(
             (
-                torch.cat((hessian_vqe_vqe, hessian_vqe_oo.t()), dim=1),
-                torch.cat((hessian_vqe_oo, hessian_oo_oo), dim=1),
+                math.concatenate((hessian_vqe_vqe, hessian_vqe_oo.t()), axis=1),
+                math.concatenate((hessian_vqe_oo, hessian_oo_oo), axis=1),
             ),
-            dim=0,
+            axis=0,
         )
         return hessian
 
@@ -152,7 +152,7 @@ class OO_pqc(OO_energy):
         theta = theta_init.detach().clone()
         for n in range(max_iterations):
 
-            kappa = torch.zeros(self.n_kappa)
+            kappa = math.convert_like(math.zeros(self.n_kappa), theta_init)
 
             gradient = self.full_gradient(theta)
             hessian = self.full_hessian(theta)
@@ -191,8 +191,10 @@ class OO_pqc(OO_energy):
 if __name__ == "__main__":
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
+    import torch
+    torch.set_default_tensor_type(torch.DoubleTensor)
 
-    torch.set_num_threads(16)
+    torch.set_num_threads(12)
 
     def get_formal_geo(alpha, phi):
         variables = [1.498047, 1.066797, 0.987109, 118.359375] + [alpha, phi]
@@ -211,7 +213,7 @@ if __name__ == "__main__":
     basis = "sto-3g"
     mol = Moldata_pyscf(geometry, basis)
 
-    ncas = 4
+    ncas = 3
     nelecas = 4
     dev = qml.device("default.qubit", wires=2 * ncas)
     pqc = Parameterized_circuit(
@@ -223,12 +225,12 @@ if __name__ == "__main__":
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
 
     # , oao_mo_coeff = oao_mo_coeff)
-    oo_pqc = OO_pqc(pqc, mol, ncas, nelecas, freeze_active=False)
+    oo_pqc = OO_pqc(pqc, mol, ncas, nelecas, freeze_active=True)
 
     mol.run_rhf()
     mol.run_casscf(ncas, nelecas)
 
-    from auto_oo.oo_energy.oo_energy import mo_ao_to_mo_oao
+    from auto_oo.oo_energy import mo_ao_to_mo_oao
 
     oao_mo_coeff = torch.from_numpy(mo_ao_to_mo_oao(mol.casscf.mo_coeff, mol.overlap))
 

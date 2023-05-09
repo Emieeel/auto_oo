@@ -12,25 +12,29 @@ Then, install this package by cloning the repo, then use `pip install -e .` in t
 ## Code structure
 ```
 auto_oo
-├── src
-│   └── auto_oo
-│       ├── ansatz
-│       │   ├── kUpCCD.py
-│       │   ├── pqc.py
-│       │   └── uccd.py
-│       ├── moldata_pyscf
-│       │   └── moldata_pyscf.py
-│       ├── newton_raphson
-│       │   └── newton_raphson.py
-│       ├── oo_energy
-│       │   ├── integrals.py
-│       │   └── oo_energy.py
-│       └── oo_pqc
-│           ├── noisy_oo_pqc.py
-│           └── oo_pqc.py
-├── .gitignore
+├── examples
+│   ├── formaldimine.png
+│   ├── three_loops_FCI.png
+│   └── Tutorial.ipynb
 ├── pyproject.toml
-└── README.md
+├── README.md
+└── src
+    └── auto_oo
+        ├── ansatze
+        │   ├── __init__.py
+        │   ├── kUpCCD.py
+        │   └── uccd.py
+        ├── __init__.py
+        ├── moldata_pyscf.py
+        ├── noisy_oo_pqc.py
+        ├── oo_energy.py
+        ├── oo_pqc.py
+        ├── pqc.py
+        └── utils
+            ├── active_space.py
+            ├── __init__.py
+            └── newton_raphson.py
+
 ```
 
 ## To-do:

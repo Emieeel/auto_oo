@@ -5,7 +5,8 @@ from .active_space import (
     molecular_hamiltonian_coefficients,
     fermionic_cas_hamiltonian,
     s2,
-    sz
+    sz,
+    scipy_csc_to_torch
 )
 
 from .newton_raphson import NewtonStep

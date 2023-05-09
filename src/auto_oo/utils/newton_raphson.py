@@ -6,16 +6,15 @@ Created on Wed Sep 28 10:37:49 2022
 @author: emielkoridon
 """
 
-import torch
-import numpy as np
+from pennylane import math
 
 
 def wolfe(t, grad, dp, alpha=1e-4):
-    return alpha * t * torch.dot(grad, dp)
+    return alpha * t * math.dot(grad, dp)
 
 
 class NewtonStep():
-    r"""Newton step and cost for pytorch.
+    r"""Newton step and cost.
     Supports augmented Hessian and backtracking line search (damped Newton step).
 
     Steepest descent in the direction determined by Hessian norm:
@@ -95,17 +94,17 @@ class NewtonStep():
         the Hessian.
 
         Args:
-            gradient (1D torch.Tensor): Gradient of a function
+            gradient (1D tensor): Gradient of a function
 
-            hessian (2D torch.Tensor): Hessian of a function
+            hessian (2D tensor): Hessian of a function
 
         Returns:
-            dp (1D torch.Tensor): Newton step
+            dp (1D tensor): Newton step
 
             lowest_eigenvalue (float): Lowest eigenvalue of the Hessian
         """
 
-        vhessian, whessian = torch.linalg.eigh(hessian)
+        vhessian, whessian = math.linalg.eigh(hessian)
 
         lowest_eigenvalue = vhessian[0].item()
         if self.verbose:
@@ -116,15 +115,15 @@ class NewtonStep():
             if self.verbose:
                 print("augmenting hessian...")
             hessian = hessian + (
-                self.mu + self.rho * abs(lowest_eigenvalue))*torch.eye(
-                    hessian.shape[0])
-            vhessian, whessian = torch.linalg.eigh(hessian)
+                self.mu + self.rho * abs(lowest_eigenvalue)) * math.eye(
+                    hessian.shape[0], like=math.get_interface(hessian))
+            vhessian, whessian = math.linalg.eigh(hessian)
             if self.verbose:
                 print("Lowest eigenvalue of augmented hessian:",
                       vhessian[0].item())
 
         # Invert hessian
-        hessian_inv = whessian @ torch.diag(1/vhessian) @ torch.t(whessian)
+        hessian_inv = whessian @ math.diag(1/vhessian) @ math.transpose(whessian)
 
         dp = - (hessian_inv @ gradient)
         return dp, lowest_eigenvalue
@@ -147,9 +146,9 @@ class NewtonStep():
 
         energy = objective_fn(*parameters).item()
 
-        parameters_tot = torch.cat([parameter.flatten() for parameter in parameters])
+        parameters_tot = math.concatenate([math.flatten(parameter) for parameter in parameters])
 
-        paramshapes = [parameter.shape for parameter in parameters]
+        paramshapes = [math.shape(parameter) for parameter in parameters]
 
         newp = parameters_tot + (t * dp)
         test_energy = objective_fn(*split_list_shapes(newp, paramshapes))
@@ -197,8 +196,8 @@ class NewtonStep():
         Args:
             objective_fn (function): the objective function for optimization
             parameters (tuple): tuple of arguments for objective function
-            gradient (1D torch.Tensor): the gradient w.r.t. composite parameters
-            hessian (2D torch.Tensor): the hessian w.r.t. composite parameters
+            gradient (1D tensor): the gradient w.r.t. composite parameters
+            hessian (2D tensor): the hessian w.r.t. composite parameters
 
         Returns:
             tuple[array, float]: the new variable values :math:`x^{(t+1)}`
@@ -217,7 +216,7 @@ def split_list_shapes(parameters, paramshapes):
     chunks = []
     num = 0
     for shape in paramshapes:
-        shapesize = np.prod(shape)
+        shapesize = math.prod(shape)
         chunks.append(parameters[num:num+shapesize].reshape(shape))
         num += shapesize
     return chunks
