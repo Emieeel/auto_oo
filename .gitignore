@@ -145,5 +145,3 @@ tmp*
 # VS code stuff
 **/.vscode/
 
-**/test/
-
