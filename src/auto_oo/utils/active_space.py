@@ -9,10 +9,9 @@ Created on Fri Apr  1 12:58:49 2022
 import itertools
 
 import numpy as np
+
 import pennylane as qml
 from pennylane import math
-
-import torch
 
 import openfermion
 
@@ -82,18 +81,6 @@ def e_pqrs(p, q, r, s, n_modes, restricted=True, up_then_down=False):
     else:
         operator = openfermion.FermionOperator(f'{p}^ {q}^ {r} {s}')
     return operator
-
-
-def scipy_csc_to_torch(scipy_csc, dtype=torch.complex128):
-    """ Convert a scipy sparse CSC matrix to pytorch sparse CSC tensor."""
-    ccol_indices = scipy_csc.indptr
-    row_indices = scipy_csc.indices
-    values = scipy_csc.data
-    size = scipy_csc.shape
-    return torch.sparse_csc_tensor(
-        torch.tensor(ccol_indices, dtype=torch.int64),
-        torch.tensor(row_indices, dtype=torch.int64),
-        torch.tensor(values), dtype=dtype, size=size)
 
 
 def restricted_to_unrestricted(tensor, alpha_then_beta=False):

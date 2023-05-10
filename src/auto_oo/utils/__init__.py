@@ -5,8 +5,9 @@ from .active_space import (
     molecular_hamiltonian_coefficients,
     fermionic_cas_hamiltonian,
     s2,
-    sz,
-    scipy_csc_to_torch
+    sz
 )
+
+from .miscellaneous import scipy_csc_to_torch, get_formal_geo
 
 from .newton_raphson import NewtonStep

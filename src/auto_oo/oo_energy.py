@@ -476,21 +476,9 @@ class OO_energy:
 if __name__ == "__main__":
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
+    from auto_oo.utils.miscellaneous import get_formal_geo
 
     # torch.set_num_threads(12)
-
-    def get_formal_geo(alpha, phi):
-        variables = [1.498047, 1.066797, 0.987109, 118.359375] + [alpha, phi]
-        geom = """
-                        N
-                        C 1 {0}
-                        H 2 {1}  1 {3}
-                        H 2 {1}  1 {3} 3 180
-                        H 1 {2}  2 {4} 3 {5}
-                        """.format(
-            *variables
-        )
-        return geom
 
     geometry = get_formal_geo(140, 80)
     basis = "cc-pvdz"

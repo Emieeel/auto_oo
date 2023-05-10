@@ -221,7 +221,7 @@ if __name__ == '__main__':
     ncas = 3
     nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
-    interface = 'jax'
+    interface = 'torch'
 
     np.random.seed(30)
 
