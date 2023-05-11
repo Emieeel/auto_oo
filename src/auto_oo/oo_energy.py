@@ -82,8 +82,10 @@ def vector_to_skew_symmetric(vector):
     size = int(np.sqrt(8 * len(vector) + 1) + 1) // 2
     matrix = math.convert_like(math.zeros((size, size)), vector)
     tril_indices = np.tril_indices(size, k=-1)
-    matrix[tril_indices[0], tril_indices[1]] = vector
-    matrix[tril_indices[1], tril_indices[0]] = -vector
+    matrix = math.set_index(
+        matrix, (tril_indices[0], tril_indices[1]), vector)
+    matrix = math.set_index(
+        matrix, (tril_indices[1], tril_indices[0]), -vector)
     return matrix
 
 
@@ -216,7 +218,8 @@ class OO_energy:
         """Generate a skew-symmetric matrix from orbital rotation parameters"""
         kappa_total_vector = math.convert_like(
             math.zeros(self.nao * (self.nao - 1) // 2), kappa)
-        kappa_total_vector[self.params_idx] = kappa
+        kappa_total_vector = math.set_index(
+            kappa_total_vector, self.params_idx, kappa)
         return vector_to_skew_symmetric(kappa_total_vector)
 
     def kappa_matrix_to_vector(self, kappa_matrix):
@@ -259,13 +262,15 @@ class OO_energy:
         fock_C = self.fock_core(int1e_mo, int2e_mo)
         fock_A = self.fock_active(int2e_mo, one_rdm)
         fock_general = math.zeros_like(int1e_mo)
-        fock_general[self.occ_idx, :] = 2 * math.transpose(
-            fock_C[:, self.occ_idx] + fock_A[:, self.occ_idx])
-        fock_general[self.act_idx, :] = math.einsum(
-            'nw,vw->vn', fock_C[:, self.act_idx], one_rdm) + math.einsum(
-            'vwxy,nwxy->vn',
-            two_rdm,
-            int2e_mo[:, :, :, self.act_idx][:, :, self.act_idx, :][:, self.act_idx, :, :])
+        fock_general = math.set_index(
+            fock_general, np.array(self.occ_idx), 2 * math.transpose(
+                fock_C[:, self.occ_idx] + fock_A[:, self.occ_idx]))
+        fock_general = math.set_index(
+            fock_general, np.array(self.act_idx), math.einsum(
+                'nw,vw->vn', fock_C[:, self.act_idx], one_rdm) + math.einsum(
+                'vwxy,nwxy->vn',
+                two_rdm,
+                int2e_mo[:, :, :, self.act_idx][:, :, self.act_idx, :][:, self.act_idx, :, :]))
         return fock_general
 
     def fock_core(self, int1e_mo, int2e_mo):
@@ -292,8 +297,8 @@ class OO_energy:
         """
         g_tilde = (
             int2e_mo[:, :, :, self.act_idx][:, :, self.act_idx, :]
-            - .5 * math.permute(int2e_mo[:, :, self.act_idx, :][:, self.act_idx, :, :],
-                                (0, 3, 2, 1)))
+            - .5 * math.transpose(int2e_mo[:, :, self.act_idx, :][:, self.act_idx, :, :],
+                                  (0, 3, 2, 1)))
         return math.einsum('wx, pqwx', one_rdm, g_tilde)
 
     def analytic_gradient_from_integrals(self, int1e_mo, int2e_mo, one_rdm, two_rdm):
@@ -324,7 +329,7 @@ class OO_energy:
         y_matrix = self.y_matrix(int2e_mo, two_full)
         fock_general = self.fock_generalized(
             int1e_mo, int2e_mo, one_rdm, two_rdm)
-        fock_general_symm = fock_general + math.t(fock_general)
+        fock_general_symm = fock_general + math.transpose(fock_general)
 
         hess0 = 2 * math.einsum('pr, qs->pqrs', one_full, int1e_mo)
         hess1 = - math.einsum('pr, qs->pqrs',
@@ -332,9 +337,9 @@ class OO_energy:
         hess2 = 2 * y_matrix
 
         hess_permuted0 = hess0 + hess1 + hess2
-        hess_permuted1 = math.permute(hess_permuted0, (0, 1, 3, 2))
-        hess_permuted2 = math.permute(hess_permuted0, (1, 0, 2, 3))
-        hess_permuted3 = math.permute(hess_permuted0, (1, 0, 3, 2))
+        hess_permuted1 = math.transpose(hess_permuted0, (0, 1, 3, 2))
+        hess_permuted2 = math.transpose(hess_permuted0, (1, 0, 2, 3))
+        hess_permuted3 = math.transpose(hess_permuted0, (1, 0, 3, 2))
 
         return hess_permuted0 - hess_permuted1 - hess_permuted2 + hess_permuted3
 
@@ -487,7 +492,9 @@ if __name__ == "__main__":
     ncas = 3
     nelecas = 4
 
-    one_rdm = torch.Tensor(
+    interface = 'torch'
+
+    one_rdm = np.array(
         [
             [1.9947e00, 2.9425e-02, -1.4976e-17],
             [2.9425e-02, 1.7815e00, 1.0134e-16],
@@ -495,7 +502,7 @@ if __name__ == "__main__":
         ]
     )
 
-    two_rdm = torch.Tensor(
+    two_rdm = np.array(
         [
             [
                 [
@@ -551,8 +558,10 @@ if __name__ == "__main__":
         ]
     )
 
-    oo_energy = OO_energy(mol, ncas, nelecas)
+    oo_energy = OO_energy(mol, ncas, nelecas, interface=interface)
 
+    one_rdm = math.convert_like(one_rdm, oo_energy.oao_mo_coeff)
+    two_rdm = math.convert_like(two_rdm, oo_energy.oao_mo_coeff)
     # mo_coeff = torch.from_numpy(mol.oao_coeff)
     # from scipy.stats import ortho_group
     # mo_transform = torch.from_numpy(ortho_group.rvs(mol.nao))

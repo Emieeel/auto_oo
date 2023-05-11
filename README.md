@@ -5,7 +5,7 @@ We use a parameterization of orbitals by rotating the orthogonal atomic orbitals
 
 ## Install
 First, create an anaconda or pip environment and install PyTorch, for example locally in a cpu-only installation:\
-`conda install pytorch torchvision torchaudio cpuonly -c pytorch`\
+`conda install pytorch cpuonly -c pytorch`\
 Optionally use GPU if your system supports it.\
 Then, install this package by cloning the repo, then use `pip install -e .` in the cloned directory.
 

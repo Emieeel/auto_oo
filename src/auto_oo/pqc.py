@@ -14,17 +14,23 @@ from pennylane import math
 import openfermion
 
 from auto_oo.ansatze.uccd import UCCD
-from auto_oo.utils.active_space import e_pq, e_pqrs, scipy_csc_to_torch
+from auto_oo.utils.active_space import e_pq, e_pqrs
+from auto_oo.utils.miscellaneous import scipy_csc_to_torch, scipy_csc_to_jax
 
 
 def initialize_e_pq(ncas, restricted=True, up_then_down=False, interface='scipy'):
-    """Initialize full e_pq operator in (pytorch) CSC sparse format"""
+    """Initialize full e_pq operator in CSC sparse format"""
     if restricted:
         num_ind = ncas
     else:
         num_ind = 2 * ncas
     if interface == 'torch':
         return [[scipy_csc_to_torch(
+            openfermion.get_sparse_operator(
+                e_pq(p, q, num_ind, restricted, up_then_down), n_qubits=2*ncas))
+            for q in range(num_ind)] for p in range(num_ind)]
+    elif interface == 'jax':
+        return [[scipy_csc_to_jax(
             openfermion.get_sparse_operator(
                 e_pq(p, q, num_ind, restricted, up_then_down), n_qubits=2*ncas))
             for q in range(num_ind)] for p in range(num_ind)]
@@ -35,13 +41,19 @@ def initialize_e_pq(ncas, restricted=True, up_then_down=False, interface='scipy'
 
 
 def initialize_e_pqrs(ncas, restricted=True, up_then_down=False, interface='scipy'):
-    """Initialize full e_pqrs operator in (pytorch) CSC sparse format"""
+    """Initialize full e_pqrs operator in CSC sparse format"""
     if restricted:
         num_ind = ncas
     else:
         num_ind = 2 * ncas
     if interface == 'torch':
         return [[[[scipy_csc_to_torch(
+            openfermion.get_sparse_operator(
+                e_pqrs(p, q, r, s, num_ind, restricted, up_then_down), n_qubits=2*ncas))
+            for s in range(num_ind)] for r in range(num_ind)]
+            for q in range(num_ind)] for p in range(num_ind)]
+    elif interface == 'jax':
+        return [[[[scipy_csc_to_jax(
             openfermion.get_sparse_operator(
                 e_pqrs(p, q, r, s, num_ind, restricted, up_then_down), n_qubits=2*ncas))
             for s in range(num_ind)] for r in range(num_ind)]
@@ -169,7 +181,7 @@ class Parameterized_circuit():
 
     def init_zeros(self):
         """Initialize thetas in all-zero"""
-        return math.cast(math.zeros(self.theta_shape, like=self.interface), np.float64)
+        return math.zeros(self.theta_shape, like=self.interface)
 
     def get_rdms_from_state(self, state, restricted=True):
         r"""
@@ -193,10 +205,10 @@ class Parameterized_circuit():
         one_rdm = math.convert_like(math.zeros((rdm_size, rdm_size)), state)
         two_rdm = math.convert_like(math.zeros((rdm_size, rdm_size, rdm_size, rdm_size)), state)
         for p, q in itertools.product(range(rdm_size), repeat=2):
-            math.set_index(one_rdm, (p, q), (state @ (self.e_pq[p][q] @ state)).real)
+            one_rdm = math.set_index(one_rdm, (p, q), (state @ (self.e_pq[p][q] @ state)).real)
             for r, s in itertools.product(range(rdm_size), repeat=2):
-                math.set_index(two_rdm, (p, q, r, s),
-                               (state @ (self.e_pqrs[p][q][r][s] @ state)).real)
+                two_rdm = math.set_index(two_rdm, (p, q, r, s),
+                                         (state @ (self.e_pqrs[p][q][r][s] @ state)).real)
         return one_rdm, two_rdm
 
     def draw_circuit(self, theta):
@@ -221,14 +233,14 @@ if __name__ == '__main__':
     ncas = 3
     nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
-    interface = 'torch'
+    interface = 'jax'
 
     np.random.seed(30)
 
     pqc = Parameterized_circuit(ncas, nelecas, dev,
                                 ansatz='np_fabric', n_layers=2,
                                 add_singles=False, interface=interface)
-    print(pqc.redundant_idx)
+    # print(pqc.redundant_idx)
 
     theta = math.convert_like(
         math.random.rand(*math.shape(pqc.init_zeros())), math.zeros(1, like=interface))
