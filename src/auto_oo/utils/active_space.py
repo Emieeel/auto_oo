@@ -137,6 +137,12 @@ def active_space_integrals(one_body_integrals,
             - as_one_body_integrals: one-electron integrals over active space.
             - as_two_body_integrals: two-electron integrals over active space.
     """
+    if math.get_interface(one_body_integrals) == 'jax':
+        obai = math.ix_(*[act_idx]*2)
+        tbai = math.ix_(*[act_idx]*4)
+    else:
+        obai = np.ix_(*[act_idx]*2)
+        tbai = np.ix_(*[act_idx]*4)
     # --- Determine core constant ---
     core_constant = (
         2 * math.sum(one_body_integrals[occ_idx, occ_idx]) +  # i^ j
@@ -149,12 +155,12 @@ def active_space_integrals(one_body_integrals,
     )
 
     # restrict range to active indices only
-    as_two_body_integrals = two_body_integrals[np.ix_(*[act_idx]*4)]
+    as_two_body_integrals = two_body_integrals[tbai]
 
     # --- Modified one electron integrals ---
     # sum over i in occ_idx
     as_one_body_integrals = (
-        one_body_integrals[np.ix_(*[act_idx]*2)]
+        one_body_integrals[obai]
         + 2 * math.sum(two_body_integrals[:, :, occ_idx, occ_idx
                                           ][act_idx, :, :][:, act_idx, :],
                        axis=2)  # i^ p^ q i

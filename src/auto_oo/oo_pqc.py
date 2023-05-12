@@ -129,7 +129,7 @@ class OO_pqc(OO_energy):
         hessian_oo_oo = self.orbital_orbital_hessian(theta)
         hessian = math.concatenate(
             (
-                math.concatenate((hessian_vqe_vqe, hessian_vqe_oo.t()), axis=1),
+                math.concatenate((hessian_vqe_vqe, math.transpose(hessian_vqe_oo)), axis=1),
                 math.concatenate((hessian_vqe_oo, hessian_oo_oo), axis=1),
             ),
             axis=0,
@@ -157,7 +157,7 @@ class OO_pqc(OO_energy):
         energy_l = []
         hess_eig_l = []
 
-        theta = theta_init.detach().clone()
+        theta = math.array(theta_init)
         for n in range(max_iterations):
 
             kappa = math.convert_like(math.zeros(self.n_kappa), theta_init)
@@ -174,12 +174,12 @@ class OO_pqc(OO_energy):
             theta = new_theta_kappa[0].reshape(self.pqc.theta_shape)
             kappa = new_theta_kappa[1]
 
-            theta_l.append(theta.detach().clone())
-            kappa_l.append(kappa.detach().clone())
+            theta_l.append(math.array(theta, like='numpy'))
+            kappa_l.append(math.array(theta, like='numpy'))
 
             self.oao_mo_coeff = self.oao_mo_coeff @ self.kappa_to_mo_coeff(kappa)
 
-            oao_mo_coeff_l.append(self.oao_mo_coeff.detach().clone())
+            oao_mo_coeff_l.append(math.array(self.oao_mo_coeff, like='numpy'))
 
             energy = self.energy_from_parameters(theta).item()
             energy_l.append(energy)
@@ -201,9 +201,6 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import torch
     import jax.numpy as jnp
-    # torch.set_default_tensor_type(torch.DoubleTensor)
-
-    # torch.set_num_threads(12)
 
     def get_formal_geo(alpha, phi):
         variables = [1.498047, 1.066797, 0.987109, 118.359375] + [alpha, phi]
@@ -227,6 +224,12 @@ if __name__ == "__main__":
     dev = qml.device("default.qubit", wires=2 * ncas)
 
     interface = 'jax'
+    if interface == 'torch':
+        torch.set_default_tensor_type(torch.DoubleTensor)
+        torch.set_num_threads(12)
+    elif interface == 'jax':
+        from jax.config import config
+        config.update("jax_enable_x64", True)
 
     pqc = Parameterized_circuit(
         ncas, nelecas, dev,
@@ -326,7 +329,7 @@ if __name__ == "__main__":
     plt.show()
 
     energy_l, theta_l, kappa_l, oao_mo_coeff_l, hess_eig_l = oo_pqc.full_optimization(
-        math.detach(theta), max_iterations=50, conv_tol=1e-8, verbose=1
+        theta, max_iterations=50, conv_tol=1e-8, verbose=1
     )
 
     print("Converged energy:", energy_l[-1])

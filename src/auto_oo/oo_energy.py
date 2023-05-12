@@ -219,7 +219,7 @@ class OO_energy:
         kappa_total_vector = math.convert_like(
             math.zeros(self.nao * (self.nao - 1) // 2), kappa)
         kappa_total_vector = math.set_index(
-            kappa_total_vector, self.params_idx, kappa)
+            kappa_total_vector, math.array(self.params_idx), kappa)
         return vector_to_skew_symmetric(kappa_total_vector)
 
     def kappa_matrix_to_vector(self, kappa_matrix):
@@ -282,7 +282,7 @@ class OO_energy:
         """
         g_tilde = (
             2 * math.sum(int2e_mo[:, :, self.occ_idx, self.occ_idx],
-                         axis=-1)  # p^ i^ i q
+                         axis=2)  # p^ i^ i q
             - math.sum(int2e_mo[:, self.occ_idx, self.occ_idx, :],
                        axis=1))  # p^ i^ q i
         return int1e_mo + g_tilde
@@ -299,7 +299,7 @@ class OO_energy:
             int2e_mo[:, :, :, self.act_idx][:, :, self.act_idx, :]
             - .5 * math.transpose(int2e_mo[:, :, self.act_idx, :][:, self.act_idx, :, :],
                                   (0, 3, 2, 1)))
-        return math.einsum('wx, pqwx', one_rdm, g_tilde)
+        return math.einsum('vw, mnvw', one_rdm, g_tilde)
 
     def analytic_gradient_from_integrals(self, int1e_mo, int2e_mo, one_rdm, two_rdm):
         r"""
@@ -493,8 +493,11 @@ if __name__ == "__main__":
     nelecas = 4
 
     interface = 'torch'
+    if interface == 'torch':
+        torch.set_default_tensor_type(torch.DoubleTensor)
+        torch.set_num_threads(12)
 
-    one_rdm = np.array(
+    one_rdm_np = np.array(
         [
             [1.9947e00, 2.9425e-02, -1.4976e-17],
             [2.9425e-02, 1.7815e00, 1.0134e-16],
@@ -502,7 +505,7 @@ if __name__ == "__main__":
         ]
     )
 
-    two_rdm = np.array(
+    two_rdm_np = np.array(
         [
             [
                 [
@@ -560,8 +563,8 @@ if __name__ == "__main__":
 
     oo_energy = OO_energy(mol, ncas, nelecas, interface=interface)
 
-    one_rdm = math.convert_like(one_rdm, oo_energy.oao_mo_coeff)
-    two_rdm = math.convert_like(two_rdm, oo_energy.oao_mo_coeff)
+    one_rdm = math.convert_like(one_rdm_np, oo_energy.oao_mo_coeff)
+    two_rdm = math.convert_like(two_rdm_np, oo_energy.oao_mo_coeff)
     # mo_coeff = torch.from_numpy(mol.oao_coeff)
     # from scipy.stats import ortho_group
     # mo_transform = torch.from_numpy(ortho_group.rvs(mol.nao))
@@ -579,6 +582,104 @@ if __name__ == "__main__":
     plt.colorbar()
     plt.show()
 
+    kappa = math.zeros(oo_energy.n_kappa, like=interface)
+    if interface == 'jax':
+        from jax import jacobian
+        import jax.numpy as jnp
+        grad_O_auto_1d = jacobian(oo_energy.energy_from_kappa,
+                                  argnums=0)(kappa, one_rdm, two_rdm)
+    elif interface == 'torch':
+        from torch.func import jacrev
+        grad_O_auto_1d = jacrev(oo_energy.energy_from_kappa,
+                                argnums=0)(kappa, one_rdm, two_rdm)
+
+    grad_O_auto_2d = oo_energy.kappa_vector_to_matrix(grad_O_auto_1d)
+
+    grad_O_exact_2d = oo_energy.analytic_gradient(one_rdm, two_rdm)
+    grad_O_exact_1d = oo_energy.kappa_matrix_to_vector(
+        oo_energy.analytic_gradient(one_rdm, two_rdm))
+    print("should be true:", np.allclose(grad_O_auto_1d, grad_O_exact_1d))
+    hess_O_exact_4d = oo_energy.analytic_hessian(one_rdm, two_rdm)
+
+    vmin = math.min(grad_O_auto_2d).item()
+    vmax = math.max(grad_O_auto_2d).item()
+    plt.title("automatic diff orbital gradient")
+    plt.imshow(grad_O_auto_2d, vmin=vmin, vmax=vmax)
+    plt.colorbar()
+    plt.show()
+    plt.title("exact orbital gradient")
+    plt.imshow(grad_O_exact_2d, vmin=vmin, vmax=vmax)
+    plt.colorbar()
+    plt.show()
+
+    interface = 'jax'
+    from jax.config import config
+    config.update("jax_enable_x64", True)
+
+    oo_energy_jax = OO_energy(mol, ncas, nelecas, interface=interface)
+
+    one_rdm_jax = math.convert_like(one_rdm_np, oo_energy_jax.oao_mo_coeff)
+    two_rdm_jax = math.convert_like(two_rdm_np, oo_energy_jax.oao_mo_coeff)
+    # mo_coeff = torch.from_numpy(mol.oao_coeff)
+    # from scipy.stats import ortho_group
+    # mo_transform = torch.from_numpy(ortho_group.rvs(mol.nao))
+    # oao_mo_coeff = mo_transform
+    # oo_energy.oao_mo_coeff = oao_mo_coeff
+    # print("check if property works:",
+    #       torch.allclose(oo_energy.mo_coeff, torch.from_numpy(mol.oao_coeff) @ oao_mo_coeff)     )
+
+    plt.title("one rdm")
+    plt.imshow(one_rdm_jax)
+    plt.colorbar()
+    plt.show()
+    plt.title("two rdm")
+    plt.imshow(two_rdm_jax.reshape(ncas**2, ncas**2))
+    plt.colorbar()
+    plt.show()
+
+    kappa_jax = math.zeros(oo_energy_jax.n_kappa, like=interface)
+    if interface == 'jax':
+        from jax import jacobian
+        import jax.numpy as jnp
+        grad_O_auto_1d_jax = jacobian(oo_energy_jax.energy_from_kappa,
+                                      argnums=0)(kappa_jax, one_rdm_jax, two_rdm_jax)
+    elif interface == 'torch':
+        from torch.func import jacrev
+        grad_O_auto_1d_jax = jacrev(oo_energy_jax.energy_from_kappa,
+                                    argnums=0)(kappa_jax, one_rdm_jax, two_rdm_jax)
+
+    grad_O_auto_2d_jax = oo_energy_jax.kappa_vector_to_matrix(grad_O_auto_1d_jax)
+
+    grad_O_exact_2d_jax = oo_energy_jax.analytic_gradient(one_rdm_jax, two_rdm_jax)
+    grad_O_exact_1d_jax = oo_energy_jax.kappa_matrix_to_vector(
+        oo_energy_jax.analytic_gradient(one_rdm_jax, two_rdm_jax))
+    print("should be true:", np.allclose(grad_O_auto_1d_jax, grad_O_exact_1d_jax))
+    hess_O_exact_4d_jax = oo_energy_jax.analytic_hessian(one_rdm_jax, two_rdm_jax)
+
+    vmin = math.min(grad_O_auto_2d_jax).item()
+    vmax = math.max(grad_O_auto_2d_jax).item()
+    plt.title("automatic diff orbital gradient")
+    plt.imshow(grad_O_auto_2d_jax, vmin=vmin, vmax=vmax)
+    plt.colorbar()
+    plt.show()
+    plt.title("exact orbital gradient")
+    plt.imshow(grad_O_exact_2d_jax, vmin=vmin, vmax=vmax)
+    plt.colorbar()
+    plt.show()
+
+    energy = oo_energy.energy_from_mo_coeff(oo_energy.mo_coeff, one_rdm, two_rdm)
+    energy_jax = oo_energy_jax.energy_from_mo_coeff(oo_energy_jax.mo_coeff,
+                                                    one_rdm_jax, two_rdm_jax)
+    c0, c1, c2 = oo_energy.get_active_integrals(oo_energy.mo_coeff)
+    c0_jax, c1_jax, c2_jax = oo_energy_jax.get_active_integrals(oo_energy_jax.mo_coeff)
+
+    print("should be true:",
+          math.allclose(energy, energy_jax),
+          math.allclose(c0, c0_jax),
+          math.allclose(c1, c1_jax),
+          math.allclose(c2, c2_jax),
+          math.allclose(hess_O_exact_4d, hess_O_exact_4d_jax))
+
     energy_l = oo_energy.orbital_optimization(
         one_rdm, two_rdm, conv_tol=1e-9, max_iterations=150, mu=1e-4, rho=1.05, verbose=0
     )
@@ -589,4 +690,15 @@ if __name__ == "__main__":
 
     plt.title("Energy over orbital optimization")
     plt.plot(energy_l)
+    plt.show()
+
+    energy_l_jax = oo_energy_jax.orbital_optimization(
+        one_rdm_jax, two_rdm_jax, conv_tol=1e-9, max_iterations=150, mu=1e-4, rho=1.05, verbose=0
+    )
+
+    print(f"Final OO energy         = {energy_l[-1]:.8f}")
+    print(f"Reference CASSCF energy = {mol.casscf.e_tot:.8f}")
+
+    plt.title("Energy over orbital optimization jax")
+    plt.plot(energy_l_jax)
     plt.show()
