@@ -26,8 +26,8 @@ jobs:
       - name: Clone Github Repo PennyLane
         uses: GuillaumeFalourd/clone-github-repo-action@v2
         with:
-   	  owner: 'PennyLaneAI'
-  	  repository: 'pennylane'
+   	    owner: 'PennyLaneAI'
+  	    repository: 'pennylane'
       - name: Install PennyLane
         run: |
           cd pennylane
