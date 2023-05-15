@@ -23,16 +23,7 @@ jobs:
           pip install pytest setuptools wheel
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install --upgrade "jax[cpu]"
-      - name: Clone Github Repo PennyLane
-        uses: GuillaumeFalourd/clone-github-repo-action@v2
-        with:
-   	    owner: 'PennyLaneAI'
-  	    repository: 'pennylane'
-      - name: Install PennyLane
-        run: |
-          cd pennylane
           pip install .
-          cd ..
       - name: Test with pytest
         run: |
           pytest
