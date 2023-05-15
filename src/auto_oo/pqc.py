@@ -173,8 +173,8 @@ class Parameterized_circuit():
         """The first few parameters of the GateFabric ansatz are redundant,
         as they are rotations between active all-occupied or all-virtual
         orbitals. Set them to zero and then return the state."""
-        theta_full = math.convert_like(
-            math.zeros(len(self.redundant_idx) + self.theta_shape), theta)
+        theta_full = math.zeros(len(self.redundant_idx) + self.theta_shape,
+                                like=math.get_interface(theta))
         theta_full = math.set_index(theta_full, self.params_idx, theta)
         theta_full = math.reshape(theta_full, self.full_theta_shape)
         return gatefabric_circuit(theta_full, self.wires, self.hfstate)
@@ -233,7 +233,7 @@ if __name__ == '__main__':
     ncas = 3
     nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
-    interface = 'jax'
+    interface = 'torch'
 
     np.random.seed(30)
 
