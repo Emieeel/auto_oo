@@ -3,12 +3,11 @@ name: Python package
 on: [push]
 
 jobs:
-  build:
-    name: Build and test for (${{ matrix.python-version }}, ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  build-and-test:
+    name: Build and test for (${{ matrix.python-version }}, ubuntu-latest)
+    runs-on: 'ubuntu-latest'
     strategy:
       matrix:
-        os: ['ubuntu-latest', 'macos-latest']
         python-version: ["3.8", "3.9", "3.10", "3.11"]
 
     steps:
@@ -21,15 +20,33 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest setuptools wheel
-          if [ ${{ matrix.os }} == 'macos-latest']
-          then
-            echo "Installing torch for ${{ matrix.os }}"
-            pip install torch
-          elif [ ${{ matrix.os }} == 'macos-latest']
-          then
-            echo "Installing torch for ${{ matrix.os }}"
-            pip install torch --index-url https://download.pytorch.org/whl/cpu
-	  fi
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --upgrade "jax[cpu]"
+      - name: Install package
+        run: |
+          pip install .
+      - name: Test with pytest
+        run: |
+          pytest
+
+  build-and-test:
+    name: Build and test for (${{ matrix.python-version }}, ubuntu-latest)
+    runs-on: 'macos-latest'
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install wheel pytorch and jax
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest setuptools wheel
+          pip install torch
           pip install --upgrade "jax[cpu]"
       - name: Install package
         run: |
