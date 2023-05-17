@@ -29,8 +29,8 @@ jobs:
         run: |
           pytest
 
-  build-and-test:
-    name: Build and test for (${{ matrix.python-version }}, ubuntu-latest)
+  build:
+    name: Build and test for (${{ matrix.python-version }}, macos-latest)
     runs-on: 'macos-latest'
     strategy:
       matrix:
