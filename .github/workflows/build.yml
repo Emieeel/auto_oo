@@ -3,7 +3,7 @@ name: Python package
 on: [push]
 
 jobs:
-  build-and-test:
+  build-and-test-ubuntu:
     name: Build and test for (${{ matrix.python-version }}, ubuntu-latest)
     runs-on: 'ubuntu-latest'
     strategy:
@@ -29,7 +29,7 @@ jobs:
         run: |
           pytest
 
-  build-and-test:
+  build-and-test-macos:
     name: Build and test for (${{ matrix.python-version }}, macos-latest)
     runs-on: 'macos-latest'
     strategy:
