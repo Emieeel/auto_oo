@@ -2,7 +2,7 @@
 
 from .pqc import Parameterized_circuit, uccd_circuit
 
-from .moldata_pyscf import Moldata_pyscf
+from .moldata_pyscf import Moldata_pyscf, ao_to_oao
 
 from .oo_pqc import OO_pqc
 
