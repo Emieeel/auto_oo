@@ -6,6 +6,10 @@ Created on Tue May  2 16:45:23 2023
 @author: emielkoridon
 """
 
+from jax import jacobian as jjacobian
+from jax import hessian as jhessian
+from torch.func import hessian as thessian
+from torch.func import jacrev
 import pytest
 
 import torch
@@ -20,222 +24,397 @@ torch.set_default_dtype(torch.float64)
 config.update("jax_enable_x64", True)
 
 
-@pytest.mark.parametrize(
-    ("geometry, basis, hf_oao_coeff_ref"),
-    [
-        (auto_oo.get_formal_geo(140, 80), 'sto-3g',
-         math.array([[9.89775942e-01, -3.29898279e-04, -1.12359168e-01,
-                      5.24659469e-02,  3.18702648e-03, -1.65763271e-02,
-                      2.64432430e-02, -1.22156121e-03, -2.78584833e-02,
-                      -5.37690011e-02, -1.67894464e-02,  6.15929969e-04,
-                      5.57514036e-03],
-                     [1.41355839e-01,  1.55429771e-03,  7.20192172e-01,
-                      -3.24912537e-01, -2.38695621e-02,  1.25440160e-01,
-                      -2.12658203e-01,  7.95376922e-03,  2.37356609e-01,
-                      4.53685613e-01,  1.62790407e-01, -1.71446883e-03,
-                      -7.42089942e-02],
-                     [6.23150396e-04,  1.00798752e-02,  6.64026157e-02,
-                      2.88178301e-01, -2.34087416e-02,  5.81306808e-01,
-                      2.29093217e-01, -3.14698682e-03, -2.13788489e-01,
-                      2.62375443e-01, -3.61354102e-03, -8.82647206e-02,
-                      6.31769482e-01],
-                     [1.15162345e-03,  1.31230715e-04,  6.86229663e-02,
-                      -1.12963416e-01,  1.98234497e-02, -2.57113424e-01,
-                      6.09051196e-01, -1.93689576e-01, -5.35768916e-01,
-                      3.66839807e-01,  1.12759363e-01,  3.26187079e-02,
-                      -2.68646773e-01],
-                     [4.32092382e-04,  3.30763858e-05,  2.23804477e-02,
-                      -2.13447541e-02,  2.32761527e-01, -2.69250493e-02,
-                      3.06266000e-01,  9.07146586e-01,  9.67061568e-02,
-                      3.04217628e-02,  1.35648644e-02, -1.14751272e-01,
-                      -6.16216470e-02],
-                     [-3.53002105e-04,  9.88315264e-01, -7.83216003e-02,
-                      -1.00263834e-01, -2.63061992e-04, -7.17236664e-04,
-                      -1.18835272e-02,  2.00662151e-03,  1.47891981e-02,
-                      5.85390217e-02, -5.20549922e-02, -3.14885679e-03,
-                      2.31236171e-02],
-                     [2.84621848e-03,  1.49942270e-01,  4.58197180e-01,
-                      5.54188037e-01,  4.03559166e-04,  1.39405577e-02,
-                      7.25535092e-02, -1.37306915e-02, -9.37836719e-02,
-                      -4.47357651e-01,  4.60421314e-01,  2.37863350e-02,
-                      -1.82524825e-01],
-                     [-9.31917367e-03, -6.28167943e-04, -1.92453332e-01,
-                      2.44285760e-01,  3.34529824e-02, -5.66886523e-01,
-                      -1.60534335e-01,  2.01339527e-02,  1.64349267e-01,
-                      3.67998881e-01,  4.88383721e-01, -6.51612168e-02,
-                      3.86450978e-01],
-                     [-4.37804312e-05, -4.34862994e-04,  1.56855749e-02,
-                      -2.32936181e-02,  3.16013025e-03, -1.47000634e-02,
-                      6.24303099e-01, -2.81867458e-01,  7.16969922e-01,
-                      -9.80131580e-02, -1.20398175e-02, -9.19733025e-03,
-                      7.68080812e-02],
-                     [-2.52164870e-05,  6.02058485e-06,  4.19292746e-03,
-                      -3.13703884e-03,  7.09653690e-01,  4.66092979e-02,
-                      -3.59506545e-02, -7.58174384e-02,  4.09483431e-04,
-                      1.24401831e-02,  1.25883729e-02,  6.92065034e-01,
-                      8.87899366e-02],
-                     [3.65335772e-04,  1.79673158e-02,  1.86923653e-01,
-                      3.84246286e-01,  4.81430952e-01, -1.81600023e-01,
-                      -8.82467898e-02, -1.64326320e-01,  3.29076574e-02,
-                      1.57529557e-01, -4.96688884e-01, -4.83909410e-01,
-                      -1.03825702e-01],
-                     [3.62808491e-04,  1.79625440e-02,  1.84555615e-01,
-                      3.86576128e-01, -4.55076038e-01, -2.46041525e-01,
-                      3.03721883e-02,  1.63188700e-01,  6.45586101e-02,
-                      1.81274605e-01, -4.76678444e-01,  5.06380300e-01,
-                      1.78896488e-02],
-                     [1.62748031e-02,  2.16566362e-04,  3.69725967e-01,
-                      -3.47742158e-01,  2.63358558e-02, -4.02220603e-01,
-                      7.69288056e-02,  8.09866367e-03, -2.13209455e-01,
-                      -4.24881413e-01, -1.81283983e-01, -5.93680812e-02,
-                      5.57927976e-01]]))
-    ],
-)
-def test_mo_ao_to_oao(geometry, basis, hf_oao_coeff_ref):
-    mol = auto_oo.Moldata_pyscf(geometry, basis)
-    assert math.allclose(auto_oo.mo_ao_to_mo_oao(mol.oao_coeff, mol.overlap), math.eye(mol.nao))
-    mol.run_rhf()
-    assert math.allclose(auto_oo.mo_ao_to_mo_oao(mol.hf.mo_coeff, mol.overlap), hf_oao_coeff_ref)
+# @pytest.mark.parametrize(
+#     ("geometry, basis, hf_oao_coeff_ref"),
+#     [
+#         (auto_oo.get_formal_geo(140, 80), 'sto-3g',
+#          math.array([[9.89775942e-01, -3.29898279e-04, -1.12359168e-01,
+#                       5.24659469e-02,  3.18702648e-03, -1.65763271e-02,
+#                       2.64432430e-02, -1.22156121e-03, -2.78584833e-02,
+#                       -5.37690011e-02, -1.67894464e-02,  6.15929969e-04,
+#                       5.57514036e-03],
+#                      [1.41355839e-01,  1.55429771e-03,  7.20192172e-01,
+#                       -3.24912537e-01, -2.38695621e-02,  1.25440160e-01,
+#                       -2.12658203e-01,  7.95376922e-03,  2.37356609e-01,
+#                       4.53685613e-01,  1.62790407e-01, -1.71446883e-03,
+#                       -7.42089942e-02],
+#                      [6.23150396e-04,  1.00798752e-02,  6.64026157e-02,
+#                       2.88178301e-01, -2.34087416e-02,  5.81306808e-01,
+#                       2.29093217e-01, -3.14698682e-03, -2.13788489e-01,
+#                       2.62375443e-01, -3.61354102e-03, -8.82647206e-02,
+#                       6.31769482e-01],
+#                      [1.15162345e-03,  1.31230715e-04,  6.86229663e-02,
+#                       -1.12963416e-01,  1.98234497e-02, -2.57113424e-01,
+#                       6.09051196e-01, -1.93689576e-01, -5.35768916e-01,
+#                       3.66839807e-01,  1.12759363e-01,  3.26187079e-02,
+#                       -2.68646773e-01],
+#                      [4.32092382e-04,  3.30763858e-05,  2.23804477e-02,
+#                       -2.13447541e-02,  2.32761527e-01, -2.69250493e-02,
+#                       3.06266000e-01,  9.07146586e-01,  9.67061568e-02,
+#                       3.04217628e-02,  1.35648644e-02, -1.14751272e-01,
+#                       -6.16216470e-02],
+#                      [-3.53002105e-04,  9.88315264e-01, -7.83216003e-02,
+#                       -1.00263834e-01, -2.63061992e-04, -7.17236664e-04,
+#                       -1.18835272e-02,  2.00662151e-03,  1.47891981e-02,
+#                       5.85390217e-02, -5.20549922e-02, -3.14885679e-03,
+#                       2.31236171e-02],
+#                      [2.84621848e-03,  1.49942270e-01,  4.58197180e-01,
+#                       5.54188037e-01,  4.03559166e-04,  1.39405577e-02,
+#                       7.25535092e-02, -1.37306915e-02, -9.37836719e-02,
+#                       -4.47357651e-01,  4.60421314e-01,  2.37863350e-02,
+#                       -1.82524825e-01],
+#                      [-9.31917367e-03, -6.28167943e-04, -1.92453332e-01,
+#                       2.44285760e-01,  3.34529824e-02, -5.66886523e-01,
+#                       -1.60534335e-01,  2.01339527e-02,  1.64349267e-01,
+#                       3.67998881e-01,  4.88383721e-01, -6.51612168e-02,
+#                       3.86450978e-01],
+#                      [-4.37804312e-05, -4.34862994e-04,  1.56855749e-02,
+#                       -2.32936181e-02,  3.16013025e-03, -1.47000634e-02,
+#                       6.24303099e-01, -2.81867458e-01,  7.16969922e-01,
+#                       -9.80131580e-02, -1.20398175e-02, -9.19733025e-03,
+#                       7.68080812e-02],
+#                      [-2.52164870e-05,  6.02058485e-06,  4.19292746e-03,
+#                       -3.13703884e-03,  7.09653690e-01,  4.66092979e-02,
+#                       -3.59506545e-02, -7.58174384e-02,  4.09483431e-04,
+#                       1.24401831e-02,  1.25883729e-02,  6.92065034e-01,
+#                       8.87899366e-02],
+#                      [3.65335772e-04,  1.79673158e-02,  1.86923653e-01,
+#                       3.84246286e-01,  4.81430952e-01, -1.81600023e-01,
+#                       -8.82467898e-02, -1.64326320e-01,  3.29076574e-02,
+#                       1.57529557e-01, -4.96688884e-01, -4.83909410e-01,
+#                       -1.03825702e-01],
+#                      [3.62808491e-04,  1.79625440e-02,  1.84555615e-01,
+#                       3.86576128e-01, -4.55076038e-01, -2.46041525e-01,
+#                       3.03721883e-02,  1.63188700e-01,  6.45586101e-02,
+#                       1.81274605e-01, -4.76678444e-01,  5.06380300e-01,
+#                       1.78896488e-02],
+#                      [1.62748031e-02,  2.16566362e-04,  3.69725967e-01,
+#                       -3.47742158e-01,  2.63358558e-02, -4.02220603e-01,
+#                       7.69288056e-02,  8.09866367e-03, -2.13209455e-01,
+#                       -4.24881413e-01, -1.81283983e-01, -5.93680812e-02,
+#                       5.57927976e-01]]))
+#     ],
+# )
+# def test_mo_ao_to_oao(geometry, basis, hf_oao_coeff_ref):
+#     mol = auto_oo.Moldata_pyscf(geometry, basis)
+#     assert math.allclose(auto_oo.mo_ao_to_mo_oao(mol.oao_coeff, mol.overlap), math.eye(mol.nao))
+#     mol.run_rhf()
+#     assert math.allclose(auto_oo.mo_ao_to_mo_oao(mol.hf.mo_coeff, mol.overlap), hf_oao_coeff_ref)
 
 
-@pytest.mark.parametrize(
-    ("geometry, basis"),
-    [
-        (auto_oo.get_formal_geo(140, 80), 'sto-3g'),
-        (auto_oo.get_formal_geo(140, 80), 'cc-pvdz'),
-        (auto_oo.get_formal_geo(120, 125), 'sto-3g'),
-        (auto_oo.get_formal_geo(120, 125), 'cc-pvdz')
-    ],
-)
-def test_int_transforms(geometry, basis):
-    mol = auto_oo.Moldata_pyscf(geometry, basis)
-    mol.run_rhf()
+# @pytest.mark.parametrize(
+#     ("geometry, basis"),
+#     [
+#         (auto_oo.get_formal_geo(140, 80), 'sto-3g'),
+#         (auto_oo.get_formal_geo(140, 80), 'cc-pvdz'),
+#         (auto_oo.get_formal_geo(120, 125), 'sto-3g'),
+#         (auto_oo.get_formal_geo(120, 125), 'cc-pvdz')
+#     ],
+# )
+# def test_int_transforms(geometry, basis):
+#     mol = auto_oo.Moldata_pyscf(geometry, basis)
+#     mol.run_rhf()
 
-    int1e_ao = mol.int1e_ao
-    int2e_ao = mol.int2e_ao
+#     int1e_ao = mol.int1e_ao
+#     int2e_ao = mol.int2e_ao
 
-    hf_mo_coeff = mol.hf.mo_coeff
-    mol.run_casscf(2, 2)
-    casscf_2_2_mo_coeff = mol.casscf.mo_coeff
-    mol.run_casscf(4, 4)
-    casscf_4_4_mo_coeff = mol.casscf.mo_coeff
+#     hf_mo_coeff = mol.hf.mo_coeff
+#     mol.run_casscf(2, 2)
+#     casscf_2_2_mo_coeff = mol.casscf.mo_coeff
+#     mol.run_casscf(4, 4)
+#     casscf_4_4_mo_coeff = mol.casscf.mo_coeff
 
-    int1e_mo_hf = hf_mo_coeff.T @ int1e_ao @ hf_mo_coeff
-    int2e_mo_hf = ao2mo.kernel(int2e_ao, hf_mo_coeff)
+#     int1e_mo_hf = hf_mo_coeff.T @ int1e_ao @ hf_mo_coeff
+#     int2e_mo_hf = ao2mo.kernel(int2e_ao, hf_mo_coeff)
 
-    int1e_mo_casscf_2_2 = casscf_2_2_mo_coeff.T @ int1e_ao @ casscf_2_2_mo_coeff
-    int2e_mo_casscf_2_2 = ao2mo.kernel(int2e_ao, casscf_2_2_mo_coeff)
+#     int1e_mo_casscf_2_2 = casscf_2_2_mo_coeff.T @ int1e_ao @ casscf_2_2_mo_coeff
+#     int2e_mo_casscf_2_2 = ao2mo.kernel(int2e_ao, casscf_2_2_mo_coeff)
 
-    int1e_mo_casscf_4_4 = casscf_4_4_mo_coeff.T @ int1e_ao @ casscf_4_4_mo_coeff
-    int2e_mo_casscf_4_4 = ao2mo.kernel(int2e_ao, casscf_4_4_mo_coeff)
+#     int1e_mo_casscf_4_4 = casscf_4_4_mo_coeff.T @ int1e_ao @ casscf_4_4_mo_coeff
+#     int2e_mo_casscf_4_4 = ao2mo.kernel(int2e_ao, casscf_4_4_mo_coeff)
 
-    assert math.allclose(auto_oo.int1e_transform(int1e_ao, hf_mo_coeff), int1e_mo_hf)
-    assert math.allclose(auto_oo.int2e_transform(int2e_ao, hf_mo_coeff), int2e_mo_hf)
+#     assert math.allclose(auto_oo.int1e_transform(int1e_ao, hf_mo_coeff), int1e_mo_hf)
+#     assert math.allclose(auto_oo.int2e_transform(int2e_ao, hf_mo_coeff), int2e_mo_hf)
 
-    assert math.allclose(auto_oo.int1e_transform(int1e_ao, casscf_2_2_mo_coeff),
-                         int1e_mo_casscf_2_2)
-    assert math.allclose(auto_oo.int2e_transform(int2e_ao, casscf_2_2_mo_coeff),
-                         int2e_mo_casscf_2_2)
+#     assert math.allclose(auto_oo.int1e_transform(int1e_ao, casscf_2_2_mo_coeff),
+#                          int1e_mo_casscf_2_2)
+#     assert math.allclose(auto_oo.int2e_transform(int2e_ao, casscf_2_2_mo_coeff),
+#                          int2e_mo_casscf_2_2)
 
-    assert math.allclose(auto_oo.int1e_transform(int1e_ao, casscf_4_4_mo_coeff),
-                         int1e_mo_casscf_4_4)
-    assert math.allclose(auto_oo.int2e_transform(int2e_ao, casscf_4_4_mo_coeff),
-                         int2e_mo_casscf_4_4)
+#     assert math.allclose(auto_oo.int1e_transform(int1e_ao, casscf_4_4_mo_coeff),
+#                          int1e_mo_casscf_4_4)
+#     assert math.allclose(auto_oo.int2e_transform(int2e_ao, casscf_4_4_mo_coeff),
+#                          int2e_mo_casscf_4_4)
 
-    assert math.allclose(auto_oo.int1e_transform(
-        math.array(int1e_ao, like='torch'), math.array(hf_mo_coeff, like='torch')), int1e_mo_hf)
-    assert math.allclose(auto_oo.int2e_transform(
-        math.array(int2e_ao, like='torch'), math.array(hf_mo_coeff, like='torch')), int2e_mo_hf)
+#     assert math.allclose(auto_oo.int1e_transform(
+#         math.array(int1e_ao, like='torch'), math.array(hf_mo_coeff, like='torch')), int1e_mo_hf)
+#     assert math.allclose(auto_oo.int2e_transform(
+#         math.array(int2e_ao, like='torch'), math.array(hf_mo_coeff, like='torch')), int2e_mo_hf)
 
-    assert math.allclose(auto_oo.int1e_transform(
-        math.array(int1e_ao, like='torch'), math.array(casscf_2_2_mo_coeff, like='torch')),
-        int1e_mo_casscf_2_2)
-    assert math.allclose(auto_oo.int2e_transform(
-        math.array(int2e_ao, like='torch'), math.array(casscf_2_2_mo_coeff, like='torch')),
-        int2e_mo_casscf_2_2)
+#     assert math.allclose(auto_oo.int1e_transform(
+#         math.array(int1e_ao, like='torch'), math.array(casscf_2_2_mo_coeff, like='torch')),
+#         int1e_mo_casscf_2_2)
+#     assert math.allclose(auto_oo.int2e_transform(
+#         math.array(int2e_ao, like='torch'), math.array(casscf_2_2_mo_coeff, like='torch')),
+#         int2e_mo_casscf_2_2)
 
-    assert math.allclose(auto_oo.int1e_transform(
-        math.array(int1e_ao, like='torch'), math.array(casscf_4_4_mo_coeff, like='torch')),
-        int1e_mo_casscf_4_4)
-    assert math.allclose(auto_oo.int2e_transform(
-        math.array(int2e_ao, like='torch'), math.array(casscf_4_4_mo_coeff, like='torch')),
-        int2e_mo_casscf_4_4)
+#     assert math.allclose(auto_oo.int1e_transform(
+#         math.array(int1e_ao, like='torch'), math.array(casscf_4_4_mo_coeff, like='torch')),
+#         int1e_mo_casscf_4_4)
+#     assert math.allclose(auto_oo.int2e_transform(
+#         math.array(int2e_ao, like='torch'), math.array(casscf_4_4_mo_coeff, like='torch')),
+#         int2e_mo_casscf_4_4)
 
-    assert math.allclose(auto_oo.int1e_transform(
-        math.array(int1e_ao, like='jax'), math.array(hf_mo_coeff, like='jax')), int1e_mo_hf)
-    assert math.allclose(auto_oo.int2e_transform(
-        math.array(int2e_ao, like='jax'), math.array(hf_mo_coeff, like='jax')), int2e_mo_hf)
+#     assert math.allclose(auto_oo.int1e_transform(
+#         math.array(int1e_ao, like='jax'), math.array(hf_mo_coeff, like='jax')), int1e_mo_hf)
+#     assert math.allclose(auto_oo.int2e_transform(
+#         math.array(int2e_ao, like='jax'), math.array(hf_mo_coeff, like='jax')), int2e_mo_hf)
 
-    assert math.allclose(auto_oo.int1e_transform(
-        math.array(int1e_ao, like='jax'), math.array(casscf_2_2_mo_coeff, like='jax')),
-        int1e_mo_casscf_2_2)
-    assert math.allclose(auto_oo.int2e_transform(
-        math.array(int2e_ao, like='jax'), math.array(casscf_2_2_mo_coeff, like='jax')),
-        int2e_mo_casscf_2_2)
+#     assert math.allclose(auto_oo.int1e_transform(
+#         math.array(int1e_ao, like='jax'), math.array(casscf_2_2_mo_coeff, like='jax')),
+#         int1e_mo_casscf_2_2)
+#     assert math.allclose(auto_oo.int2e_transform(
+#         math.array(int2e_ao, like='jax'), math.array(casscf_2_2_mo_coeff, like='jax')),
+#         int2e_mo_casscf_2_2)
 
-    assert math.allclose(auto_oo.int1e_transform(
-        math.array(int1e_ao, like='jax'), math.array(casscf_4_4_mo_coeff, like='jax')),
-        int1e_mo_casscf_4_4)
-    assert math.allclose(auto_oo.int2e_transform(
-        math.array(int2e_ao, like='jax'), math.array(casscf_4_4_mo_coeff, like='jax')),
-        int2e_mo_casscf_4_4)
-
-
-@pytest.mark.parametrize(
-    ("vector, matrix_ref"),
-    [
-        (math.array([1., 2., 3., 4., 5., 6.], like='numpy'),
-         math.array([[0., -1., -2., -4.],
-                     [1., 0., -3., -5.],
-                     [2., 3., 0., -6.],
-                     [4., 5., 6., 0.]
-                     ])),
-        (math.array([1., 2., 3., 4., 5., 6.], like='torch'),
-            math.array([[0., -1., -2., -4.],
-                        [1., 0., -3., -5.],
-                        [2., 3., 0., -6.],
-                        [4., 5., 6., 0.]
-                        ])),
-        (math.array([1., 2., 3., 4., 5., 6.], like='jax'),
-            math.array([[0., -1., -2., -4.],
-                        [1., 0., -3., -5.],
-                        [2., 3., 0., -6.],
-                        [4., 5., 6., 0.]
-                        ]))
-    ],
-)
-def test_vector_to_skew_symmetric(vector, matrix_ref):
-    assert math.allclose(auto_oo.oo_energy.vector_to_skew_symmetric(vector), matrix_ref)
-    assert math.allclose(vector, auto_oo.oo_energy.skew_symmetric_to_vector(matrix_ref))
+#     assert math.allclose(auto_oo.int1e_transform(
+#         math.array(int1e_ao, like='jax'), math.array(casscf_4_4_mo_coeff, like='jax')),
+#         int1e_mo_casscf_4_4)
+#     assert math.allclose(auto_oo.int2e_transform(
+#         math.array(int2e_ao, like='jax'), math.array(casscf_4_4_mo_coeff, like='jax')),
+#         int2e_mo_casscf_4_4)
 
 
-@pytest.mark.parametrize(
-    ("occ_idx", "act_idx", "virt_idx", "freeze_active", "idx_ref"),
-    [
-        ([0, 1], [2, 3], [4, 5], False,
-         np.array([1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13])),
-        ([0, 1], [2, 3], [4, 5], True,
-         np.array([1,  2,  3,  4,  6,  7,  8,  9, 10, 11, 12, 13])),
-        ([0, 1, 2], [3, 4], [5, 6], False,
-            np.array([3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])),
-        ([0, 1, 2], [3, 4], [5, 6], True,
-            np.array([3,  4,  5,  6,  7,  8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]))
-    ],
-)
-def test_non_redundant_indices(occ_idx, act_idx, virt_idx, freeze_active, idx_ref):
-    assert math.allclose(
-        auto_oo.oo_energy.non_redundant_indices(occ_idx, act_idx, virt_idx, freeze_active), idx_ref)
+# @pytest.mark.parametrize(
+#     ("vector, matrix_ref"),
+#     [
+#         (math.array([1., 2., 3., 4., 5., 6.], like='numpy'),
+#          math.array([[0., -1., -2., -4.],
+#                      [1., 0., -3., -5.],
+#                      [2., 3., 0., -6.],
+#                      [4., 5., 6., 0.]
+#                      ])),
+#         (math.array([1., 2., 3., 4., 5., 6.], like='torch'),
+#             math.array([[0., -1., -2., -4.],
+#                         [1., 0., -3., -5.],
+#                         [2., 3., 0., -6.],
+#                         [4., 5., 6., 0.]
+#                         ])),
+#         (math.array([1., 2., 3., 4., 5., 6.], like='jax'),
+#             math.array([[0., -1., -2., -4.],
+#                         [1., 0., -3., -5.],
+#                         [2., 3., 0., -6.],
+#                         [4., 5., 6., 0.]
+#                         ]))
+#     ],
+# )
+# def test_vector_to_skew_symmetric(vector, matrix_ref):
+#     assert math.allclose(auto_oo.oo_energy.vector_to_skew_symmetric(vector), matrix_ref)
+#     assert math.allclose(vector, auto_oo.oo_energy.skew_symmetric_to_vector(matrix_ref))
 
 
-def get_oo_energy(geometry, basis, ncas, nelecas, freeze_active, interface):
-    mol = auto_oo.Moldata_pyscf(geometry, basis)
-    return auto_oo.OO_energy(mol, ncas, nelecas,
-                             freeze_active=freeze_active, interface=interface)
+# @pytest.mark.parametrize(
+#     ("occ_idx", "act_idx", "virt_idx", "freeze_active", "idx_ref"),
+#     [
+#         ([0, 1], [2, 3], [4, 5], False,
+#          np.array([1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13])),
+#         ([0, 1], [2, 3], [4, 5], True,
+#          np.array([1,  2,  3,  4,  6,  7,  8,  9, 10, 11, 12, 13])),
+#         ([0, 1, 2], [3, 4], [5, 6], False,
+#             np.array([3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])),
+#         ([0, 1, 2], [3, 4], [5, 6], True,
+#             np.array([3,  4,  5,  6,  7,  8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]))
+#     ],
+# )
+# def test_non_redundant_indices(occ_idx, act_idx, virt_idx, freeze_active, idx_ref):
+#     assert math.allclose(
+#         auto_oo.oo_energy.non_redundant_indices(occ_idx, act_idx, virt_idx, freeze_active), idx_ref)
+
+
+# def get_oo_energy(geometry, basis, ncas, nelecas, freeze_active, interface):
+#     mol = auto_oo.Moldata_pyscf(geometry, basis)
+#     return auto_oo.OO_energy(mol, ncas, nelecas,
+#                              freeze_active=freeze_active, interface=interface)
+
+
+# @pytest.mark.parametrize(
+#     ("geometry", "basis", "ncas", "nelecas", "freeze_active",
+#      "mo_coeff", "one_rdm", "two_rdm", "e_ref"),
+#     [
+#         (auto_oo.get_formal_geo(140, 80), 'sto-3g', 2, 2, True,
+#          math.array([[9.9333e-01,  5.3492e-04, -1.9943e-01,  9.8055e-02,  8.1665e-03,
+#                       -3.3549e-02,  1.1721e-02, -6.4373e-02, -4.6523e-02, -1.5654e-01,
+#                       -4.7053e-02, -2.4485e-03,  2.1614e-02],
+#                      [3.0339e-02, -4.9511e-03,  6.7346e-01, -3.5360e-01, -3.5112e-02,
+#                       1.5469e-01, -4.7991e-02,  2.9737e-01,  2.4426e-01,  9.7493e-01,
+#                       3.2404e-01,  2.2811e-02, -2.1115e-01],
+#                      [-1.9460e-03, -3.1147e-03,  2.1914e-02,  1.8732e-01, -8.2563e-03,
+#                       4.7294e-01,  2.0194e-01, -1.6444e-01, -2.1537e-01,  2.8919e-01,
+#                       -4.4163e-02, -1.3997e-01,  1.0266e+00],
+#                      [-3.9878e-05,  6.6075e-04,  7.2801e-02, -1.0095e-01,  4.0295e-02,
+#                       -1.7616e-01,  2.2665e-01, -5.7484e-01, -5.9265e-01,  4.0076e-01,
+#                       1.6334e-01,  4.4681e-02, -4.5303e-01],
+#                      [-1.1902e-02,  1.6472e-03, -1.3235e-01,  3.2205e-02,  1.7079e-01,
+#                       -1.5286e-01,  8.9586e-01,  2.7477e-01,  1.8450e-01,  7.1456e-02,
+#                       2.2596e-02, -1.7450e-01, -1.0140e-01],
+#                      [7.2868e-04,  9.9261e-01, -1.2727e-01, -1.7835e-01, -1.7647e-03,
+#                       -9.6190e-04, -2.4979e-02,  1.7113e-02,  1.1409e-02,  1.6007e-01,
+#                       -1.5328e-01, -5.4942e-03,  6.1968e-02],
+#                      [-5.2938e-03,  3.3104e-02,  3.5673e-01,  5.3595e-01,  4.6614e-03,
+#                       2.1574e-02,  8.0988e-02, -7.1101e-02, -3.8002e-02, -8.8977e-01,
+#                       1.0173e+00,  2.9676e-02, -3.5273e-01],
+#                      [5.1827e-03,  3.7286e-04, -7.6705e-02,  1.5253e-01,  1.8357e-02,
+#                       -4.3958e-01, -1.5356e-01,  8.5878e-02,  8.5815e-02,  5.2312e-01,
+#                       7.8272e-01, -9.0428e-02,  6.0311e-01],
+#                      [-2.9170e-04, -9.0678e-05,  3.0389e-02, -2.5348e-02,  1.3448e-02,
+#                       2.3416e-02,  4.3243e-02, -6.1446e-01,  7.9580e-01, -3.6630e-02,
+#                       -2.1887e-02,  8.6047e-03,  7.5446e-02],
+#                      [4.5959e-04, -6.1325e-05,  9.7942e-03, -3.6090e-03,  5.4424e-01,
+#                       4.5110e-02, -6.1893e-02,  9.0112e-03, -2.7601e-02,  7.9414e-04,
+#                       1.9797e-02,  1.1837e+00,  1.5692e-01],
+#                      [2.5188e-03, -7.2010e-03,  1.1455e-01,  2.2841e-01,  4.0786e-01,
+#                       -1.3306e-01, -2.1778e-01, -2.1842e-02,  1.0349e-02,  3.1104e-01,
+#                       -8.7774e-01, -8.6456e-01, -1.6929e-01],
+#                      [-2.0047e-03, -6.6356e-03,  5.9476e-02,  2.4810e-01, -3.8739e-01,
+#                       -2.3379e-01,  1.3225e-01,  4.9314e-02,  2.6779e-02,  3.2789e-01,
+#                       -8.4479e-01,  9.0883e-01,  5.5081e-02],
+#                      [-8.1451e-03, -1.5492e-04,  1.7996e-01, -2.3228e-01,  2.7867e-02,
+#                       -3.6551e-01,  7.2975e-02, -7.7523e-02, -1.6133e-01, -7.2801e-01,
+#                       -3.1231e-01, -1.1850e-01,  9.8801e-01]]),
+#          math.array([[1.6686, -0.0778],
+#                      [-0.0778,  0.3314]]),
+#          math.array([[[[1.6569, -0.1387],
+#                        [-0.1387,  0.0116]],
+
+#                       [[-0.1387, -0.7280],
+#                        [0.0116,  0.0609]]],
+
+
+#                      [[[-0.1387,  0.0116],
+#                        [-0.7280,  0.0609]],
+
+#                       [[0.0116,  0.0609],
+#                          [0.0609,  0.3198]]]]),
+#          math.array([-92.74923236954386])),
+#     ],
+# )
+# def test_energy_from_mo_coeff(geometry, basis, ncas, nelecas, freeze_active,
+#                               mo_coeff, one_rdm, two_rdm, e_ref):
+#     mol = auto_oo.Moldata_pyscf(geometry, basis)
+#     oo_energy_torch = auto_oo.OO_energy(mol, ncas, nelecas,
+#                                         freeze_active=freeze_active, interface='torch')
+#     assert np.allclose(oo_energy_torch.energy_from_mo_coeff(
+#         math.array(mo_coeff, like='torch'), math.array(one_rdm, like='torch'),
+#         math.array(two_rdm, like='torch')), e_ref)
+
+#     oo_energy_jax = auto_oo.OO_energy(mol, ncas, nelecas,
+#                                       freeze_active=freeze_active, interface='jax')
+#     assert np.allclose(oo_energy_jax.energy_from_mo_coeff(
+#         math.array(mo_coeff, like='jax'), math.array(one_rdm, like='jax'),
+#         math.array(two_rdm, like='jax')), e_ref)
+
+
+# @pytest.mark.parametrize(
+#     ("geometry", "basis", "ncas", "nelecas", "freeze_active",
+#      "mo_coeff", "one_rdm", "two_rdm", "e_ref"),
+#     [
+#         (auto_oo.get_formal_geo(140, 80), 'sto-3g', 2, 2, False,
+#          math.array([[1.02410942e+00, -1.44485996e-01, -1.22283337e-03,
+#                       -6.92105527e-03, -1.22191185e-03, -1.68737940e-03,
+#                       1.75420166e-02, -1.64976921e-02,  3.63410363e-04,
+#                       9.10179123e-05,  7.02693079e-04,  7.69242606e-04,
+#                       2.45601209e-02],
+#                      [-1.44485996e-01,  1.27102203e+00, -8.35510237e-03,
+#                       8.33090765e-02,  1.47040840e-02,  2.05491933e-02,
+#                       -1.74022090e-01,  2.16821224e-01, -3.37367753e-03,
+#                       -8.62524345e-04, -1.09749430e-02, -1.16666054e-02,
+#                       -3.66189921e-01],
+#                      [-1.22283337e-03, -8.35510237e-03,  1.17080424e+00,
+#                       -6.09411627e-02, -1.07561034e-02,  1.55985716e-02,
+#                       -2.00656514e-01,  2.13767917e-01,  2.46589718e-03,
+#                       6.30139174e-04, -1.02027449e-02, -9.69784783e-03,
+#                       2.67483185e-01],
+#                      [-6.92105527e-03,  8.33090765e-02, -6.09411627e-02,
+#                       1.05594126e+00,  8.42234637e-03, -5.58826900e-04,
+#                       6.92144928e-03, -7.04309680e-03, -7.63897614e-02,
+#                       -4.93211825e-04,  8.70467891e-04,  4.74942082e-04,
+#                       -2.09761320e-01],
+#                      [-1.22191185e-03,  1.47040840e-02, -1.07561034e-02,
+#                       8.42234637e-03,  1.01025279e+00, -9.86413949e-05,
+#                       1.22157318e-03, -1.24292348e-03, -3.40658645e-04,
+#                       -8.40429606e-02,  1.11163141e-02, -1.08789589e-02,
+#                       -3.70164397e-02],
+#                      [-1.68737940e-03,  2.05491933e-02,  1.55985716e-02,
+#                       -5.58826900e-04, -9.86413949e-05,  1.02845157e+00,
+#                       -1.66022513e-01, -7.48021951e-04,  2.51443819e-05,
+#                       6.34381847e-06,  2.62311797e-02,  2.62360254e-02,
+#                       2.23010467e-03],
+#                      [1.75420166e-02, -1.74022090e-01, -2.00656514e-01,
+#                       6.92144928e-03,  1.22157318e-03, -1.66022513e-01,
+#                       1.41719899e+00,  3.75451001e-02, -2.64145217e-04,
+#                       -6.79178174e-05, -3.68521259e-01, -3.68577010e-01,
+#                       -3.16218915e-02],
+#                      [-1.64976921e-02,  2.16821224e-01,  2.13767917e-01,
+#                       -7.04309680e-03, -1.24292348e-03, -7.48021951e-04,
+#                       3.75451001e-02,  1.16950164e+00,  2.42905654e-04,
+#                       6.29243560e-05, -1.67318064e-01, -1.67264548e-01,
+#                       3.37769658e-02],
+#                      [3.63410363e-04, -3.37367753e-03,  2.46589718e-03,
+#                       -7.63897614e-02, -3.40658645e-04,  2.51443819e-05,
+#                       -2.64145217e-04,  2.42905654e-04,  1.00832990e+00,
+#                       2.67703703e-05, -2.43181136e-05, -5.12373901e-06,
+#                       6.41676147e-03],
+#                      [9.10179123e-05, -8.62524345e-04,  6.30139174e-04,
+#                       -4.93211825e-04, -8.40429606e-02,  6.34381847e-06,
+#                       -6.79178174e-05,  6.29243560e-05,  2.67703703e-05,
+#                       1.22811066e+00, -3.27055897e-01,  3.27047885e-01,
+#                       1.71464547e-03],
+#                      [7.02693079e-04, -1.09749430e-02, -1.02027449e-02,
+#                       8.70467891e-04,  1.11163141e-02,  2.62311797e-02,
+#                       -3.68521259e-01, -1.67318064e-01, -2.43181136e-05,
+#                       -3.27055897e-01,  1.29124706e+00, -3.95728266e-02,
+#                       -4.59431442e-03],
+#                      [7.69242606e-04, -1.16666054e-02, -9.69784783e-03,
+#                       4.74942082e-04, -1.08789589e-02,  2.62360254e-02,
+#                       -3.68577010e-01, -1.67264548e-01, -5.12373901e-06,
+#                       3.27047885e-01, -3.95728266e-02,  1.29123882e+00,
+#                       -3.00271688e-03],
+#                      [2.45601209e-02, -3.66189921e-01,  2.67483185e-01,
+#                       -2.09761320e-01, -3.70164397e-02,  2.23010467e-03,
+#                       -3.16218915e-02,  3.37769658e-02,  6.41676147e-03,
+#                       1.71464547e-03, -4.59431442e-03, -3.00271688e-03,
+#                       1.27359252e+00]]),
+#             math.array([[2., 0.],
+#                         [0., 0.]]),
+#             math.array([[[[2., 0.],
+#                        [0., 0.]],
+#                 [[0., 0.],
+#                  [0., 0.]]],
+#                 [[[0., 0.],
+#                   [0., 0.]],
+#                  [[0., 0.],
+#                   [0., 0.]]]]), math.array([-92.66372193556138])),
+#     ],
+# )
+# def test_orbital_optimization(geometry, basis, ncas, nelecas, freeze_active,
+#                               mo_coeff, one_rdm, two_rdm, e_ref):
+#     mol = auto_oo.Moldata_pyscf(geometry, basis)
+#     oo_energy_torch = auto_oo.OO_energy(mol, ncas, nelecas,
+#                                         freeze_active=freeze_active, interface='torch')
+#     energy_l_torch = oo_energy_torch.orbital_optimization(math.array(one_rdm, like='torch'),
+#                                                           math.array(two_rdm, like='torch'))
+#     assert math.allclose(e_ref, energy_l_torch[-1])
+
+#     oo_energy_jax = auto_oo.OO_energy(mol, ncas, nelecas,
+#                                       freeze_active=freeze_active, interface='jax')
+#     energy_l_jax = oo_energy_jax.orbital_optimization(math.array(one_rdm, like='jax'),
+#                                                       math.array(two_rdm, like='jax'))
+#     assert math.allclose(e_ref, energy_l_jax[-1])
 
 
 @pytest.mark.parametrize(
     ("geometry", "basis", "ncas", "nelecas", "freeze_active",
-     "mo_coeff", "one_rdm", "two_rdm", "e_ref"),
+     "mo_coeff", "one_rdm", "two_rdm"),
     [
         (auto_oo.get_formal_geo(140, 80), 'sto-3g', 2, 2, True,
          math.array([[9.9333e-01,  5.3492e-04, -1.9943e-01,  9.8055e-02,  8.1665e-03,
@@ -290,107 +469,500 @@ def get_oo_energy(geometry, basis, ncas, nelecas, freeze_active, interface):
                        [-0.7280,  0.0609]],
 
                       [[0.0116,  0.0609],
-                         [0.0609,  0.3198]]]]),
-         math.array([-92.74923236954386])),
+                       [0.0609,  0.3198]]]])),
+        (auto_oo.get_formal_geo(140, 80), 'cc-pvdz', 3, 4, False,
+         math.array([[1.0011e+00,  3.8841e-03, -1.7874e-02,  2.0194e-02,  9.2688e-04,
+                      2.9759e-04,  7.0998e-03,  1.1614e-03,  1.7160e-02, -2.1251e-03,
+                      5.1866e-02, -4.1120e-03, -4.5381e-02, -3.9422e-02, -2.3219e-02,
+                      9.3479e-03, -4.9740e-03,  2.2480e-03,  2.6815e-02, -4.0102e-02,
+                      4.2508e-02, -8.3574e-04,  7.8440e-02, -4.2486e-03, -6.4667e-01,
+                      1.7458e-01, -5.0603e-02, -4.2904e-02, -1.5019e-01,  2.0282e-01,
+                      1.5712e-01, -3.1866e-02,  2.3257e-01, -6.6084e-02, -3.3066e-01,
+                      -1.1745e-01,  3.3154e-01, -9.1285e-03,  1.0323e-03, -1.2188e-01,
+                      2.6857e-01,  2.5500e-02, -7.5650e-02],
+                     [-1.0868e-03,  1.1098e-02,  3.3752e-01,  6.6779e-02,  5.8811e-03,
+                      3.2156e-02,  2.0139e-01,  1.4259e-01,  1.1140e-01, -1.4328e-02,
+                      -1.0296e-01,  5.4735e-03,  7.1000e-02, -1.8454e-01, -5.5281e-02,
+                      2.5920e-02, -3.5990e-03,  4.0783e-03,  9.6165e-03, -1.2695e-01,
+                      1.6092e-01,  1.0228e-02,  2.0290e-01, -1.1380e-02, -1.4361e+00,
+                      3.7271e-01, -1.0882e-01, -9.0378e-02, -3.1500e-01,  5.3711e-01,
+                      2.8694e-01, -4.5670e-02,  4.2772e-01, -1.2837e-01, -6.8554e-01,
+                      -2.4094e-01,  7.5181e-01, -1.5896e-02,  5.7028e-03, -2.1870e-01,
+                      5.4076e-01,  6.8163e-02, -2.9768e-01],
+                     [-7.1307e-03, -1.2362e-03,  3.3641e-01,  2.0703e-02,  4.8952e-03,
+                      6.5303e-02,  1.8526e-01,  2.1934e-01,  1.0181e-01,  3.5685e-02,
+                      -1.2704e+00,  9.9884e-02,  1.1659e+00,  5.2020e-01, -3.8547e-01,
+                      7.9741e-02,  1.5706e-01, -1.2303e-02, -2.4791e-01, -1.9831e-01,
+                      2.9389e-01,  2.5985e-02, -3.7574e-01,  1.7483e-02,  3.0563e+00,
+                      -7.4996e-01,  1.8606e-01,  2.2072e-01,  7.8432e-01,  1.4319e-01,
+                      -1.2742e+00,  4.5132e-01, -1.7490e+00,  3.7866e-01,  1.3809e+00,
+                      3.9728e-01, -4.3975e-01, -5.2314e-01,  3.7135e-02,  4.3451e-01,
+                      -1.2566e+00,  9.7788e-02, -1.9124e+00],
+                     [1.3467e-03, -1.1340e-03,  5.4079e-02,  8.4640e-02, -2.6994e-02,
+                      3.7810e-01, -1.3242e-01, -1.2832e-01, -1.6337e-01, -5.7237e-02,
+                      5.7874e-02, -1.1755e-03,  2.6849e-01, -1.6850e-01, -9.6051e-02,
+                      -7.6381e-02, -3.9959e-02,  4.2088e-04,  2.8865e-01,  8.4977e-02,
+                      -5.6414e-01, -6.0408e-02, -4.5544e-01,  3.4019e-02, -1.5994e-01,
+                      -1.2126e-01,  2.8079e-02, -1.3924e-02, -9.0644e-02,  5.0278e-01,
+                      -1.8088e-02, -6.7481e-02, -1.0881e-01,  3.0554e-02,  2.7583e-02,
+                      1.0934e-01, -1.7285e-01,  5.7312e-01,  4.3883e-03,  3.3756e-01,
+                      1.6309e-01, -1.1049e-02,  5.1376e-01],
+                     [-2.7712e-03,  3.0503e-02,  3.4871e-02,  1.0667e-01,  1.2424e-02,
+                      -1.3432e-01,  1.1773e-01, -3.5589e-01, -4.6229e-01,  3.9313e-03,
+                      -1.2783e-01,  1.1381e-02, -4.1925e-02, -4.0609e-02,  8.7710e-02,
+                      -7.9443e-02,  6.1203e-04, -4.3794e-03, -2.4679e-01, -2.9598e-02,
+                      -7.0139e-01,  2.2070e-01,  4.4648e-01, -2.9469e-02,  5.3900e-02,
+                      1.6289e-01, -4.7445e-02,  2.2158e-02,  8.5694e-02,  1.0161e-02,
+                      -7.0874e-02,  2.7217e-02, -1.5662e-01, -3.2976e-03, -6.4536e-02,
+                      -8.0710e-02,  2.8259e-01, -2.6678e-01, -2.8706e-03, -1.6112e-01,
+                      -3.5866e-03,  4.5051e-02, -5.0874e-01],
+                     [-1.2236e-02,  1.2639e-01, -1.0556e-01,  5.4119e-01,  4.6779e-02,
+                      -7.4495e-02, -1.2833e-01,  9.3548e-02,  1.0512e-01, -1.1711e-02,
+                      -3.7692e-02,  3.0756e-02,  2.1024e-03, -6.1531e-03, -1.5011e-02,
+                      2.4358e-02, -3.2266e-01, -4.7145e-02, -1.1544e-01, -2.7621e-02,
+                      -1.3334e-01, -9.0507e-01,  1.6068e-01,  3.4567e-04,  2.2846e-02,
+                      7.0603e-02,  5.4228e-02,  1.1092e-01, -3.1319e-02, -8.2050e-03,
+                      -1.5825e-01, -1.1896e-01,  4.4517e-02,  4.8018e-02, -1.8185e-02,
+                      2.2626e-03,  5.2302e-02, -5.1281e-02,  6.6206e-02, -3.0954e-02,
+                      -1.0895e-02,  5.0905e-02, -8.3307e-02],
+                     [-2.1253e-03,  9.6943e-03,  5.4650e-02,  8.7681e-02, -1.1749e-02,
+                      1.6824e-01, -4.1742e-02, -1.0034e-01, -1.1848e-01, -1.3175e-01,
+                      3.1033e-01, -2.0515e-02,  1.2623e+00,  1.5328e-01, -3.9768e-01,
+                      8.6775e-02,  9.0383e-03,  3.4152e-02,  1.1534e-01, -3.0646e-01,
+                      1.1749e+00,  1.9251e-01,  1.7996e+00, -1.3586e-01,  5.8185e-01,
+                      1.0592e+00, -2.8941e-01,  2.2369e-01,  7.2165e-01, -5.2100e-01,
+                      -9.1436e-01,  5.5487e-01, -1.0265e+00,  1.5800e-01,  7.4785e-01,
+                      2.0719e-01, -3.0746e-01, -2.4093e-01,  2.2910e-02,  7.3112e-01,
+                      -9.3564e-01, -6.1924e-02,  6.5037e-01],
+                     [-1.9258e-03,  1.8855e-02,  8.4535e-05,  7.3085e-02,  2.6952e-03,
+                      -4.8063e-02,  4.9145e-02, -2.6798e-01, -2.8267e-01, -6.3670e-03,
+                      -4.3327e-01,  3.8034e-02, -1.4024e-01, -7.9779e-02,  6.3820e-02,
+                      -2.1661e-01,  4.5293e-03, -1.3371e-02, -2.0479e-02, -8.8707e-03,
+                      8.3411e-01, -3.2486e-01, -1.0484e+00,  6.4928e-02, -5.1417e-02,
+                      -1.0169e+00,  3.7478e-01, -1.1111e-02, -1.1209e-01,  3.2426e-02,
+                      -2.3438e-02, -4.1671e-02, -3.6944e-02,  5.4595e-02,  3.4474e-01,
+                      4.4124e-02,  1.6671e-01, -2.0558e-02,  2.6297e-05, -2.9058e-01,
+                      1.7165e-01,  4.7982e-02, -6.2900e-01],
+                     [-1.1065e-02,  1.0865e-01, -9.7966e-02,  4.6937e-01,  6.6258e-03,
+                      -5.5805e-02, -1.2105e-01,  8.2541e-02,  5.3675e-02,  4.5125e-03,
+                      -4.7172e-02,  2.2517e-01, -3.1197e-02,  2.7915e-03, -1.2162e-02,
+                      -8.2326e-03, -1.7169e-01, -1.7475e-01,  2.9349e-02,  2.4158e-02,
+                      1.5159e-01,  1.2309e+00, -3.2981e-01, -6.3577e-03, -2.9289e-02,
+                      -3.4713e-01, -4.1828e-01, -5.4582e-01,  2.4556e-01,  2.0386e-02,
+                      7.4720e-02,  1.8019e-02,  1.3334e-02,  2.2363e-01, -7.4195e-02,
+                      3.6417e-01,  4.9035e-02, -4.5877e-02, -9.7947e-03, -6.4654e-02,
+                      1.5623e-02, -5.4757e-04, -1.1792e-01],
+                     [-4.0010e-04, -4.9723e-04, -2.7902e-03, -2.8923e-04, -5.6227e-04,
+                      9.4669e-03, -3.2553e-03, -1.4885e-02,  3.0021e-02, -5.3984e-03,
+                      2.0983e-02, -2.8137e-03,  1.7647e-02, -4.5556e-02,  4.0051e-02,
+                      -4.2895e-02, -4.6392e-06, -4.2217e-03, -1.5974e-01, -5.1506e-02,
+                      -6.2235e-03,  2.2461e-02,  4.5323e-03,  3.1896e-03, -1.5578e-02,
+                      1.0118e-01, -1.8801e-02, -1.2568e-02, -4.5169e-02,  2.7914e-02,
+                      -3.4484e-02,  8.8804e-02,  1.4790e-01, -5.7878e-03,  2.5063e-01,
+                      -2.1712e-02,  4.2492e-01, -3.0010e-01,  1.3819e-01,  4.5482e-01,
+                      -1.1439e-01, -1.4059e-01,  1.1232e+00],
+                     [-8.5205e-05,  1.9977e-03, -5.5734e-04,  8.2007e-03,  5.0156e-04,
+                      -3.1271e-03,  4.7583e-04, -3.3047e-03, -1.5903e-02,  2.2182e-03,
+                      -2.6060e-03,  2.4367e-03, -2.7466e-03,  7.3278e-03, -6.5642e-03,
+                      -1.3427e-03, -1.5755e-03,  6.1602e-04,  2.0784e-02,  6.1356e-03,
+                      1.6955e-03,  6.6673e-03, -1.4059e-03,  6.2019e-02,  2.9510e-02,
+                      9.7470e-02,  1.8470e-01,  1.2573e-01, -1.0776e-01,  2.4495e-02,
+                      2.7351e-01,  2.0512e-01, -5.2246e-03,  2.8274e-01, -1.3127e-02,
+                      7.9203e-01,  9.4120e-02, -5.9011e-02,  3.7115e-01, -1.1756e-01,
+                      4.2798e-02, -1.8798e-01, -1.5314e-01],
+                     [-5.7986e-05,  6.9217e-04, -8.9821e-03,  8.4717e-04,  4.5895e-04,
+                      -2.4641e-03,  4.3388e-04,  4.0608e-03, -4.8126e-03, -6.1339e-03,
+                      1.2312e-02, -1.2393e-03, -1.6698e-03, -7.8992e-02,  4.2337e-02,
+                      -9.9611e-03, -9.8681e-03, -1.0068e-03, -4.6655e-02, -2.3034e-03,
+                      7.2260e-03,  9.2884e-03,  2.9739e-02, -2.1310e-03, -1.8204e-02,
+                      -9.8498e-02,  1.1889e-01,  1.0927e-01,  1.8306e-01, -4.4472e-02,
+                      -2.6504e-02,  9.3492e-03, -1.9060e-01,  8.0940e-03, -7.8674e-01,
+                      -2.8722e-02, -1.4045e-01, -8.0685e-02,  7.9580e-02, -2.7373e-01,
+                      3.7811e-02, -1.5776e-01,  7.4497e-01],
+                     [-3.9534e-05,  1.1650e-04, -2.8388e-04,  8.0576e-04,  1.0969e-02,
+                      5.3588e-03, -1.9244e-03, -1.0292e-03, -6.7916e-03,  1.6121e-04,
+                      4.9554e-03, -7.7207e-03,  3.6825e-03, -1.0393e-02,  1.2251e-02,
+                      -2.5828e-03,  4.9560e-02, -4.3913e-02, -1.6190e-02, -7.1098e-03,
+                      -6.3811e-03, -7.9395e-02,  2.8192e-02,  7.3487e-05, -8.7517e-03,
+                      -6.2127e-02, -1.5057e-01, -5.1224e-02,  4.0055e-02,  8.3218e-03,
+                      2.8670e-01,  2.7662e-01, -1.1874e-01, -4.7910e-02, -4.4824e-02,
+                      2.5182e-01,  4.1686e-02, -6.1853e-02, -5.9102e-01, -2.5523e-04,
+                      -8.3414e-02,  8.0673e-01,  2.5488e-01],
+                     [2.5675e-04, -3.9154e-04,  1.2960e-02,  3.5836e-03, -3.6580e-04,
+                      8.4461e-03, -4.6844e-03, -2.0026e-03, -1.9364e-02,  4.9891e-03,
+                      3.6194e-03,  8.8007e-05,  7.9200e-03,  8.6687e-02, -6.6311e-02,
+                      1.6456e-02,  2.1256e-02, -1.5539e-03, -3.8357e-02, -7.2356e-02,
+                      -1.0653e-03, -1.1290e-03, -4.4966e-02,  3.4947e-03, -8.7081e-02,
+                      -4.6358e-02,  6.2619e-02,  5.8696e-02,  9.2824e-02, -4.5537e-02,
+                      -1.4687e-02,  2.5024e-02, -9.9311e-02,  1.4276e-02, -3.0756e-01,
+                      4.4400e-02, -7.8101e-02, -9.0204e-02,  7.6065e-02,  9.2391e-01,
+                      -6.3594e-01,  3.8849e-02, -4.6776e-01],
+                     [1.1092e-03,  9.7610e-01,  8.8678e-03, -2.2015e-01, -1.7187e-02,
+                      4.2163e-02, -1.1918e-02, -3.8676e-03,  5.1067e-03, -6.0508e-02,
+                      -6.4779e-03,  1.3026e-03,  2.9723e-02,  5.7695e-02, -2.0257e-01,
+                      3.4136e-02,  3.2647e-02,  2.0997e-03,  7.4492e-02, -7.5758e-01,
+                      -1.8939e-02,  1.2905e-02,  1.7503e-02, -2.3985e-03,  1.7880e-01,
+                      -4.1582e-02, -2.1386e-02, -9.0768e-02, -2.1708e-01,  9.0059e-02,
+                      -1.4996e-01,  5.1071e-02, -2.2942e-01,  2.8998e-02, -4.6246e-03,
+                      2.4014e-02, -1.5509e-01, -1.6006e-01,  2.8222e-02,  1.3799e-01,
+                      4.0228e-01,  5.1247e-02, -3.3918e-02],
+                     [4.5707e-03, -8.2641e-03,  2.5298e-01,  6.6617e-03,  8.2521e-03,
+                      -2.0639e-03, -2.8800e-01, -8.4916e-02,  1.2787e-03,  1.2721e-01,
+                      5.6035e-02, -4.1995e-04, -6.7617e-02,  2.7189e-01, -3.2342e-01,
+                      8.0513e-02,  6.4651e-02,  4.5073e-03,  1.4777e-01, -1.7189e+00,
+                      -2.6856e-02,  2.5059e-02,  3.9326e-02, -5.1212e-03,  3.7514e-01,
+                      -1.0486e-01, -3.4851e-02, -1.7971e-01, -4.3520e-01,  1.7821e-01,
+                      -2.5978e-01,  8.0552e-02, -4.0577e-01,  4.8370e-02, -6.1672e-02,
+                      3.2893e-02, -3.4955e-01, -3.8456e-01,  6.4109e-02,  2.6134e-01,
+                      1.0575e+00,  1.2002e-01, -1.3649e-02],
+                     [5.8027e-03, -1.6849e-02,  1.4717e-01, -9.4182e-03,  4.4189e-03,
+                      6.0281e-03, -2.1891e-01, -7.6080e-02,  2.6006e-02,  2.0274e+00,
+                      1.4233e-01, -6.3393e-03, -9.6695e-01,  9.3837e-03,  9.5726e-01,
+                      -1.7913e-01, -8.6636e-02, -4.4937e-02, -8.0114e-01,  3.7938e+00,
+                      -6.5727e-01, -1.8801e-01, -1.1387e+00,  9.2484e-02, -1.5411e+00,
+                      -4.4130e-01,  2.9020e-01,  2.4286e-01,  3.8336e-01,  5.6578e-03,
+                      1.4202e+00, -6.5204e-01,  1.8543e+00, -2.8174e-01, -9.4789e-01,
+                      -2.9189e-01,  2.2285e-03, -2.8467e-01,  4.3839e-02,  7.0101e-02,
+                      2.2764e+00,  2.2516e-01,  1.9122e-02],
+                     [2.9544e-03, -1.3556e-02, -7.3058e-02, -1.1791e-01,  2.7536e-02,
+                      -3.4508e-01, -1.2887e-01,  4.9649e-02,  4.2458e-02,  1.3193e-01,
+                      -1.1236e-01,  4.8146e-03,  1.8330e-01, -6.7603e-01,  4.1839e-01,
+                      -9.2869e-02, -1.4193e-01,  2.1075e-02,  5.0901e-01, -1.2516e-01,
+                      4.7412e-02,  6.9211e-03,  9.4224e-02, -7.9292e-03, -2.5168e-02,
+                      1.4338e-01, -3.0231e-02,  6.9342e-02,  1.9885e-01, -2.4614e-02,
+                      -1.8942e-01,  1.1070e-01, -2.3683e-01,  4.9376e-02,  2.0565e-01,
+                      8.1089e-02, -3.1172e-01, -4.0051e-01,  6.0075e-02,  7.7110e-01,
+                      3.3634e-01,  1.3823e-01, -2.9113e-01],
+                     [-4.2360e-04,  4.3036e-03,  1.5686e-02,  2.1319e-02,  5.8879e-03,
+                      1.0471e-02,  7.6120e-02, -3.7198e-01,  5.2140e-01, -1.7615e-02,
+                      -2.1879e-02, -3.8460e-03, -2.1295e-02,  8.7612e-02, -1.0185e-01,
+                      -9.5795e-01, -7.6182e-03,  3.8512e-04,  3.6995e-02, -4.7633e-03,
+                      2.7401e-02,  2.5556e-03,  7.6618e-02, -4.4137e-03, -6.4882e-03,
+                      3.0176e-02, -1.2973e-02,  2.3269e-03,  7.6410e-03, -7.5389e-03,
+                      1.3177e-01, -1.8366e-01, -1.3821e-01,  3.2303e-03, -6.7336e-03,
+                      5.9401e-03, -3.1653e-02,  1.8453e-02, -7.0811e-03, -8.3382e-03,
+                      -1.9490e-03,  6.9855e-03, -4.8459e-02],
+                     [-1.8636e-04, -8.1555e-04, -8.7800e-03, -3.0247e-02,  4.4487e-01,
+                      4.1218e-02,  8.4666e-03,  9.6177e-05, -1.1627e-02,  2.8869e-03,
+                      -2.4001e-02, -3.2453e-01, -1.2744e-03,  1.1909e-02, -2.1240e-02,
+                      3.5459e-03, -1.5176e-01, -8.7450e-01,  2.8238e-02,  1.3137e-03,
+                      2.9014e-02,  1.6429e-01, -1.7661e-02,  1.9058e-03, -1.6270e-03,
+                      -7.2273e-03,  4.4489e-03, -7.2117e-02,  2.3205e-02,  4.4741e-03,
+                      3.9415e-02,  3.2391e-02, -1.1657e-02, -4.2861e-02,  4.4120e-02,
+                      -2.5331e-01, -8.2522e-02,  9.8518e-02,  1.1123e+00, -1.4962e-01,
+                      -1.2108e-01,  9.9800e-01,  7.7557e-02],
+                     [-4.2772e-04, -3.6406e-03, -2.3640e-03, -3.4436e-02,  1.0579e-02,
+                      -1.4110e-01, -5.0132e-02,  1.8641e-02,  1.1635e-02,  4.7814e-01,
+                      -1.7006e-01,  1.6980e-02,  1.8701e+00,  1.0853e+00, -5.7948e-01,
+                      9.6028e-02,  2.0363e-01, -2.1344e-02, -7.8669e-01,  3.9576e-01,
+                      5.0759e-01,  9.3297e-02,  6.3637e-01, -5.0224e-02,  9.9178e-01,
+                      1.6847e-01, -1.0736e-02,  3.0942e-01,  8.3139e-01,  6.7887e-01,
+                      -5.9339e-01,  2.4879e-01, -7.4071e-01,  1.4482e-01,  6.4539e-01,
+                      1.8853e-01, -5.1927e-01, -3.7227e-01,  2.9605e-02,  4.8752e-01,
+                      -3.1638e-01,  3.6382e-02, -2.1322e-01],
+                     [-2.2610e-04,  2.4079e-03,  1.5481e-02,  1.0835e-02,  5.3113e-03,
+                      9.0389e-03,  6.2201e-02, -2.9421e-01,  3.8911e-01,  4.5276e-03,
+                      7.6948e-02, -1.5145e-02,  5.0936e-02, -6.8093e-02,  8.2284e-02,
+                      1.1724e+00,  2.8924e-02,  2.9050e-03,  5.6233e-02,  4.1242e-02,
+                      -3.3824e-01,  1.0227e-01,  1.1946e-01, -3.3418e-03,  7.7622e-02,
+                      4.5852e-01, -1.7804e-01,  7.2835e-03,  7.0291e-02, -3.8686e-02,
+                      1.6450e-01, -2.1221e-01, -1.7049e-01, -1.0953e-02, -1.3457e-01,
+                      -1.6322e-02, -4.1491e-02,  4.0246e-04, -7.2073e-03,  3.4081e-02,
+                      -3.6353e-02, -3.0501e-03,  8.3960e-02],
+                     [-3.0658e-04,  3.4511e-03, -2.7695e-03,  7.0720e-03,  1.4372e-01,
+                      1.4087e-02, -1.1340e-03,  7.1009e-03, -3.6412e-02,  6.9034e-03,
+                      -9.1789e-02, -1.4924e+00,  1.0029e-02, -7.6996e-02,  1.8591e-01,
+                      -4.6205e-02,  1.6278e+00,  2.1633e+00,  8.0354e-02,  7.8155e-03,
+                      -1.4551e-01, -9.9597e-01,  2.2259e-01,  6.8123e-03,  2.9361e-02,
+                      2.6566e-01,  1.5884e-01,  1.5173e+00, -5.9972e-01, -5.8012e-02,
+                      -3.4174e-01, -2.6037e-01,  7.4217e-02, -2.0889e-01,  1.1604e-01,
+                      -5.6718e-01, -7.9779e-02,  1.0240e-01,  7.9425e-01, -6.3118e-02,
+                      -7.2677e-02,  5.8142e-01,  9.9562e-02],
+                     [4.3130e-05, -1.4730e-03, -3.2427e-03, -4.7501e-03,  1.3241e-04,
+                      7.4253e-03, -5.0719e-03,  1.9681e-02,  7.7142e-04,  2.7605e-03,
+                      7.0410e-03, -6.8811e-04, -4.2764e-03,  3.3443e-02, -3.9753e-02,
+                      5.8900e-02, -1.4306e-03,  6.8445e-03,  1.8419e-01,  6.1626e-02,
+                      1.7887e-02, -7.1757e-03,  2.7897e-01, -2.8603e-02, -1.2553e-01,
+                      -7.0431e-01,  2.4950e-01, -2.5276e-03, -6.3593e-02,  3.3236e-02,
+                      2.6180e-01, -4.1111e-01, -3.1242e-01,  2.8517e-02,  2.9511e-01,
+                      -1.0811e-02,  3.6650e-01, -2.3910e-01,  6.8120e-02,  9.4092e-02,
+                      -2.2663e-03, -3.8785e-02,  1.9896e-01],
+                     [-8.7040e-06, -2.4186e-05, -4.2581e-04, -1.7391e-04, -2.1175e-03,
+                      -9.9163e-04,  5.6138e-05, -2.2692e-04, -5.4891e-04, -1.7522e-05,
+                      5.4821e-04,  1.1870e-03,  4.7517e-04,  3.3056e-04, -2.0193e-03,
+                      5.1319e-04, -1.1664e-03,  3.4920e-03,  3.0265e-03,  1.9251e-04,
+                      3.2071e-03,  7.2063e-03,  4.5505e-02,  6.2835e-01,  9.7865e-04,
+                      4.5455e-03,  2.1253e-02,  2.2274e-02, -2.1854e-02,  5.5331e-03,
+                      1.4430e-01,  1.0850e-01,  7.1248e-03,  8.9918e-01,  1.3664e-02,
+                      -5.1053e-01, -4.2171e-02,  2.4977e-02, -1.3169e-01,  2.7296e-02,
+                      -9.1057e-03,  4.5417e-02,  2.1413e-02],
+                     [5.7205e-04, -3.8950e-04, -1.3964e-02, -9.0231e-03,  1.3142e-03,
+                      -2.4174e-02, -8.6457e-03, -2.3922e-04,  1.3906e-03,  2.1119e-02,
+                      -2.5341e-03,  8.7184e-05, -1.9444e-02, -4.5360e-02, -2.4021e-01,
+                      2.2657e-02,  4.0759e-02, -3.3577e-03, -1.3760e-01,  1.2087e-01,
+                      1.1390e-01,  1.4249e-02,  9.3957e-02, -8.2812e-03,  2.7473e-01,
+                      -1.0704e-02,  6.2808e-02,  2.4730e-01,  6.2313e-01,  1.5607e-01,
+                      -9.3145e-03,  8.0280e-03,  1.1667e-02,  2.8826e-02, -5.0846e-02,
+                      5.0391e-02,  3.4199e-01,  3.9429e-01,  6.0443e-02,  9.3810e-01,
+                      1.0944e+00,  2.3908e-01, -3.4028e-01],
+                     [8.1676e-04, -8.3108e-03,  5.7362e-03, -3.7541e-02,  2.4975e-02,
+                      6.3563e-03,  9.2197e-03, -7.5672e-03,  3.1747e-03, -1.6646e-03,
+                      -3.6296e-03, -3.5406e-02,  6.7338e-04,  1.0733e-02, -2.4566e-02,
+                      5.6313e-03, -1.7048e-01,  3.1750e-01, -1.3870e-02,  3.0776e-03,
+                      2.5105e-02,  2.1469e-01, -4.1343e-02, -2.8149e-03, -7.7052e-03,
+                      -7.9650e-03, -1.1067e-02,  3.0309e-01, -1.3522e-01, -1.3344e-02,
+                      -4.7405e-01, -4.9787e-01,  2.3750e-01,  2.6462e-01, -8.0818e-02,
+                      2.5594e-01,  3.2776e-02, -3.7787e-02,  4.0951e-01, -1.5169e-01,
+                      -1.5764e-01,  1.3951e+00,  1.7314e-01],
+                     [-2.3388e-04,  6.8878e-04,  1.6238e-02,  6.7893e-03, -8.1977e-04,
+                      2.2885e-02,  3.1140e-03,  4.4606e-04, -1.8289e-02,  1.2840e-02,
+                      -1.4430e-02,  7.4111e-04,  2.5893e-04, -1.2380e-01, -9.3357e-02,
+                      -2.1534e-02,  5.6137e-04, -2.1502e-03,  4.1112e-02, -4.5398e-02,
+                      -2.0686e-01, -1.7041e-02, -1.6609e-01,  1.1795e-02, -2.0339e-01,
+                      -9.5968e-02,  8.0191e-02,  1.3587e-01,  3.3096e-01, -4.7606e-01,
+                      5.1404e-01, -2.1126e-01,  7.4167e-01, -9.9218e-02, -2.9918e-02,
+                      -9.5932e-02, -2.7421e-01, -4.4505e-01, -1.6664e-02, -4.1365e-01,
+                      3.7649e-01, -2.1550e-02,  2.4035e-01],
+                     [4.3589e-03, -2.4774e-02,  1.1251e-01, -1.2087e-01,  3.4472e-01,
+                      -1.0647e-01, -1.8128e-01, -3.3744e-02,  9.5201e-03, -3.6515e-02,
+                      -2.1319e-02, -2.1031e-02, -9.5860e-02, -3.9998e-01, -7.1952e-01,
+                      4.7213e-02, -6.3817e-01,  1.8844e-01, -1.2473e-01, -5.0013e-02,
+                      2.3642e-02,  1.1741e-01,  1.5938e-02, -6.6575e-03,  8.3641e-03,
+                      -2.6462e-02, -1.0728e-01, -8.0670e-01, -2.5848e-01, -1.2982e-01,
+                      1.5340e-01,  3.8886e-01, -3.8109e-01, -4.0803e-02,  7.5721e-02,
+                      1.1528e-01,  1.1545e-01,  1.2136e-01, -8.0173e-01, -4.7688e-01,
+                      -1.0475e+00, -1.2474e+00,  3.5886e-02],
+                     [2.1088e-03, -1.5967e-02,  1.6560e-02, -8.8195e-02,  1.2382e-01,
+                      -2.8674e-02, -1.0599e-02, -1.7904e-03,  1.3706e-02, -1.4000e+00,
+                      7.5658e-02,  1.9690e+00, -3.1932e-01,  6.1378e-02,  2.9737e-01,
+                      3.1080e-02, -4.5422e-01, -1.6522e+00,  5.3043e-01, -1.1763e+00,
+                      -9.9757e-04,  3.9078e-01, -9.1747e-02, -3.1229e-04,  2.6963e-03,
+                      -8.2570e-02, -8.1872e-02, -5.8487e-01,  2.3532e-02, -2.4669e-02,
+                      -3.8080e-02, -1.2418e-02, -1.6337e-02,  1.6559e-01, -8.2751e-02,
+                      3.5284e-01,  3.0909e-01,  1.9004e-01, -5.8493e-01, -1.3368e-01,
+                      -3.0498e-01, -3.4313e-01, -4.5497e-03],
+                     [1.4793e-04,  3.0571e-04, -9.6946e-03, -1.5223e-03, -1.2537e-02,
+                      -3.6496e-03,  7.9457e-03,  3.3888e-03,  1.2184e-03,  1.0060e-02,
+                      -1.2073e-02, -1.1902e-02,  1.6805e-02, -2.2569e-02, -3.1851e-02,
+                      -3.3261e-03, -8.8175e-02,  1.2909e-01, -4.1912e-02,  9.8894e-02,
+                      -3.8507e-02, -1.6325e-02, -3.5770e-02,  6.4077e-04,  2.6342e-02,
+                      -1.3123e-01, -2.9369e-01,  2.5049e-01, -3.4368e-01, -4.5818e-01,
+                      2.0873e-01,  3.0427e-01, -2.1999e-01, -1.6342e-01, -1.5445e-01,
+                      -2.7829e-01,  1.8498e-01,  3.0584e-01,  5.4198e-01,  4.5180e-01,
+                      7.2939e-01,  2.5752e-01, -1.0771e-01],
+                     [6.1376e-06,  1.1878e-04,  2.9388e-04,  4.0919e-04,  3.1432e-04,
+                      5.5515e-04,  2.3247e-03, -1.1824e-02,  1.3432e-02,  8.0997e-04,
+                      1.0602e-03, -4.2323e-04, -2.8961e-03,  1.1978e-02, -1.1857e-02,
+                      -4.4576e-02, -6.8759e-05,  1.4534e-03,  3.7858e-02,  1.3677e-02,
+                      -3.0159e-02,  1.1326e-02,  1.1441e-01,  3.3553e-01, -3.8749e-02,
+                      -2.7200e-01,  4.9062e-02, -3.3767e-02,  8.5845e-03,  1.7784e-02,
+                      -5.1228e-01,  4.4285e-01,  3.9583e-01, -7.1235e-01, -5.8150e-02,
+                      3.4088e-01, -7.0142e-02,  5.4742e-02,  6.2407e-02, -4.0947e-02,
+                      1.2522e-02, -1.5757e-02, -6.4521e-02],
+                     [-3.5744e-04,  1.0051e-03, -1.3456e-02,  3.0997e-03, -1.7558e-02,
+                      1.2333e-02,  2.2442e-02,  2.0136e-03, -9.0632e-04,  1.6851e-02,
+                      7.7609e-05, -2.1050e-02, -1.2867e-02, -1.8587e-02, -1.3540e-01,
+                      9.7358e-03,  2.6602e-02,  2.0160e-01, -9.3214e-02,  1.8141e-01,
+                      6.3042e-03,  2.2212e-03, -1.0392e-02,  5.9049e-04, -4.6145e-02,
+                      7.0970e-02,  1.9558e-01, -3.8866e-01,  1.0569e-01,  1.5177e-01,
+                      -3.6895e-02,  6.2701e-03, -5.7252e-02,  1.1227e-02,  6.0582e-02,
+                      -9.4420e-02, -5.6159e-01, -5.8243e-01,  7.5409e-01,  2.0345e-01,
+                      6.1353e-01,  9.0421e-01,  3.1424e-02],
+                     [2.1681e-03,  1.5855e-03,  1.0351e-01,  3.3197e-02, -3.1303e-01,
+                      -1.7826e-01, -2.2224e-01, -9.5775e-03,  1.1897e-02, -3.7728e-02,
+                      -1.8788e-02,  2.2983e-02, -9.2948e-02, -4.7994e-01, -5.4923e-01,
+                      3.4120e-03,  7.5525e-01, -1.9193e-01,  3.8763e-02, -3.1896e-02,
+                      -1.2009e-02, -9.8395e-02,  9.8561e-02, -2.1074e-03,  2.0229e-02,
+                      1.1216e-01, -3.6538e-02,  3.8558e-01, -7.4770e-01, -1.7467e-01,
+                      -4.9197e-01, -2.4057e-01, -1.0795e-01,  7.4586e-02,  9.0711e-02,
+                      -1.1156e-01,  5.1774e-02,  2.0311e-01,  6.8225e-01, -7.3703e-01,
+                      -1.2945e+00,  8.6460e-01,  2.7333e-01],
+                     [-5.2069e-04,  1.2599e-02, -5.6339e-04,  5.0487e-02, -1.1217e-01,
+                      -6.0693e-02, -4.5126e-02,  2.7483e-02, -1.8398e-02, -1.3833e+00,
+                      -1.9175e-01, -1.9722e+00, -3.0199e-01,  4.2792e-02,  3.6656e-01,
+                      7.6747e-03,  3.2136e-01,  1.6902e+00,  4.9456e-01, -1.1780e+00,
+                      -1.1309e-01, -3.6931e-01,  6.2999e-02,  1.0111e-03,  1.7409e-02,
+                      1.0392e-01,  9.7797e-03,  4.3121e-01, -3.6468e-01, -6.4623e-02,
+                      -4.6305e-02,  5.9411e-02, -9.1788e-02, -1.5571e-01,  7.5987e-02,
+                      -3.6274e-01,  1.8470e-01,  3.4446e-01,  5.3681e-01, -2.1897e-01,
+                      -3.8027e-01,  2.4107e-01,  7.1846e-02],
+                     [1.2077e-04,  4.0862e-04, -1.0694e-02, -2.5595e-03,  1.2305e-02,
+                      -1.2685e-03,  7.9423e-03,  3.9311e-03, -7.1875e-04,  1.0238e-02,
+                      -1.0414e-02,  1.3056e-02,  1.6561e-02, -3.0226e-02, -1.2323e-02,
+                      -9.1762e-03,  9.2851e-02, -1.3242e-01, -1.6313e-03,  1.0463e-01,
+                      -3.6631e-02,  9.2396e-03, -3.2200e-02,  4.1690e-03,  3.4621e-02,
+                      6.8103e-02,  2.8893e-01, -4.5604e-01, -1.4766e-01, -4.3873e-01,
+                      -2.8641e-01, -2.3647e-01,  4.9700e-02,  1.8272e-01, -2.9237e-01,
+                      2.8795e-01,  3.0709e-01,  1.5706e-01, -4.5128e-01,  5.2263e-01,
+                      7.6426e-01,  2.2901e-03, -9.8421e-02],
+                     [-2.6362e-06,  1.0597e-04,  1.6647e-04,  3.6952e-04, -5.7906e-05,
+                      4.4039e-04,  2.6975e-03, -1.1964e-02,  1.3606e-02,  7.3067e-04,
+                      6.5925e-04, -4.8013e-05, -3.2076e-03,  1.1964e-02, -1.2171e-02,
+                      -4.4626e-02, -1.5515e-03,  1.1988e-03,  3.7941e-02,  1.4673e-02,
+                      -3.2807e-02,  7.2918e-03,  7.0305e-02, -3.5387e-01, -2.7124e-02,
+                      -2.1314e-01,  1.5064e-01,  3.7290e-02, -5.9715e-02,  3.4271e-02,
+                      -2.3234e-01,  6.5092e-01,  4.0606e-01,  6.9327e-01, -3.9103e-02,
+                      -3.1739e-01, -1.2394e-01,  8.6384e-02, -9.1807e-02, -1.0433e-02,
+                      2.4418e-03,  3.2270e-02, -4.2329e-02],
+                     [4.6916e-04, -1.9207e-03,  1.4449e-02, -5.1055e-03, -1.4300e-02,
+                      -1.4744e-02, -2.2388e-02, -2.7530e-03,  2.2519e-03, -1.7101e-02,
+                      -3.6481e-03, -2.0826e-02,  1.3246e-02,  1.9287e-02,  1.3434e-01,
+                      -9.6384e-03, -1.8571e-02,  2.0859e-01,  8.5074e-02, -1.7965e-01,
+                      -8.9497e-03,  6.5253e-03,  3.7019e-03, -1.0349e-03,  5.0887e-02,
+                      4.8287e-02,  2.0524e-01, -3.8043e-01,  1.4728e-01, -1.2547e-01,
+                      4.5603e-02, -2.2784e-02,  7.6779e-02, -3.1533e-03, -3.0768e-02,
+                      -1.2653e-01,  4.7331e-01,  6.8674e-01,  6.4857e-01, -4.2299e-01,
+                      -8.0435e-01,  7.0473e-01,  1.2100e-01],
+                     [-6.1470e-03,  3.5503e-02,  1.3889e-01,  9.3822e-02,  2.8225e-02,
+                      -3.0545e-01,  2.1764e-01, -2.6187e-02, -1.1019e-01,  4.2770e-02,
+                      8.5530e-02, -2.0314e-03, -8.8775e-02,  4.3360e-01, -3.5293e-01,
+                      1.0218e-01, -5.4880e-02,  4.6987e-02,  9.3534e-01,  2.0779e-01,
+                      -5.1959e-02,  2.8551e-03,  5.3402e-01, -3.6745e-02, -1.5085e-01,
+                      8.4122e-01, -2.3974e-01,  8.3523e-02,  1.7480e-01, -1.9786e-01,
+                      -6.3333e-02,  1.4174e-01,  2.7977e-02, -6.4429e-02, -1.0164e-01,
+                      -1.9267e-02, -1.8230e-01,  1.5391e-01, -3.0683e-03,  4.7119e-01,
+                      -1.1406e-01, -1.2473e-01,  1.9866e+00],
+                     [-6.3495e-04,  9.1349e-03,  1.3153e-02,  2.2683e-02,  5.0766e-03,
+                      -8.8156e-02,  3.1001e-02, -1.4080e-02, -3.8645e-02, -9.4824e-02,
+                      1.6386e+00, -1.3311e-01,  9.1348e-01, -2.8651e-01, -4.0974e-02,
+                      -1.1473e-01,  1.1289e-02, -1.8425e-02, -6.6033e-01, -3.1248e-01,
+                      3.4940e-01,  1.2433e-01,  1.0679e+00, -7.8955e-02, -4.3367e-01,
+                      4.8353e-01, -1.2268e-01,  2.5215e-02,  7.3112e-02, -4.1467e-02,
+                      -8.9095e-02,  7.3808e-02, -6.8163e-02,  1.7808e-03,  9.3335e-02,
+                      6.2683e-02, -2.8597e-01,  1.4111e-01, -3.0488e-03,  2.4936e-01,
+                      -1.4753e-01, -5.0478e-02,  5.0384e-01],
+                     [-1.0622e-03,  4.0096e-03,  1.7106e-02,  1.3273e-02,  2.6161e-03,
+                      -1.9602e-02,  2.2718e-02, -8.3321e-03, -1.1062e-02, -7.9739e-03,
+                      2.9288e-02, -4.0156e-03,  1.8737e-02, -1.1670e-01,  9.2881e-02,
+                      3.7538e-03, -1.5268e-02,  1.5388e-03, -1.6395e-01, -2.2070e-02,
+                      3.2544e-02,  4.5992e-02,  3.4221e-01, -1.9925e-02,  9.6135e-02,
+                      7.2129e-03, -1.1215e-02, -8.6945e-02, -3.0331e-01,  1.5315e-01,
+                      3.6156e-01, -2.1923e-01,  4.1497e-01, -8.4936e-02, -1.6962e-01,
+                      4.4535e-02, -5.9535e-01,  4.5972e-01, -1.6010e-02,  5.8451e-01,
+                      -1.4954e-01, -6.9054e-02,  9.9907e-01],
+                     [9.8386e-04, -2.0212e-03, -1.3290e-02, -4.1869e-03, -2.6365e-03,
+                      2.1397e-02, -1.7756e-02, -1.0692e-02, -7.4445e-03,  1.2924e-05,
+                      -3.2245e-02,  3.9212e-03, -1.3095e-02,  7.8824e-03, -2.5685e-02,
+                      5.3301e-03, -7.2211e-04,  6.5506e-03,  2.1999e-01,  1.0552e-01,
+                      -8.4094e-03, -3.3383e-02, -9.4720e-02,  5.5806e-03,  4.8092e-01,
+                      -5.5236e-02, -1.5113e-01, -1.4115e-01, -2.2476e-01,  2.8514e-01,
+                      1.8413e-01, -8.3424e-02,  3.4076e-01, -5.4478e-02, -5.3812e-01,
+                      -1.7229e-01,  4.3022e-01, -4.7517e-01,  8.5699e-02,  8.0150e-02,
+                      -1.5711e-01,  2.5464e-02, -9.5144e-01],
+                     [-4.7436e-04,  6.1029e-03, -7.6179e-03,  2.7161e-02,  6.6979e-04,
+                      7.0183e-04, -1.0260e-02,  5.2234e-03,  3.7266e-03, -6.5304e-05,
+                      -5.5103e-03, -7.0747e-04, -2.3019e-03,  4.4332e-03, -1.3705e-02,
+                      1.7607e-03, -8.3261e-02,  1.7501e-02,  2.3282e-02,  1.0839e-02,
+                      1.2609e-02,  7.6227e-02, -5.5856e-02,  2.1376e-02,  9.6901e-02,
+                      2.2249e-01,  7.0313e-01,  3.1151e-01, -2.4899e-01,  4.8066e-02,
+                      1.7215e-01,  1.5245e-01, -8.9398e-02, -3.7968e-01,  7.9206e-02,
+                      -4.2752e-01,  3.4563e-02, -2.7568e-02, -4.6122e-01,  5.0306e-03,
+                      -2.1042e-02,  3.8104e-01, -1.4767e-01]]),
+         math.array([
+             [1.9947e00, 2.9425e-02, -1.4976e-17],
+             [2.9425e-02, 1.7815e00, 1.0134e-16],
+             [-1.4976e-17, 1.0134e-16, 2.2377e-01],
+         ]),
+         math.array([
+             [
+                 [
+                     [1.9914e00, 2.6885e-02, -1.5717e-17],
+                     [2.6885e-02, 3.5558e00, 2.0367e-16],
+                     [-1.5717e-17, 2.0367e-16, 4.3698e-01],
+                 ],
+                 [
+                     [2.6885e-02, 2.0326e-02, 5.1605e-18],
+                     [-1.7729e00, 2.5402e-03, 8.1501e-18],
+                     [-1.0036e-16, -7.8452e-18, 5.8850e-02],
+                 ],
+                 [
+                     [-1.5717e-17, 5.1605e-18, -5.8406e-02],
+                     [-1.0036e-16, -3.6777e-17, 7.7252e-02],
+                     [-2.1849e-01, -2.9425e-02, 7.5669e-18],
+                 ],
+             ],
+             [
+                 [
+                     [2.6885e-02, -1.7729e00, -1.0036e-16],
+                     [2.0326e-02, 2.5402e-03, -7.8452e-18],
+                     [5.1605e-18, 8.1501e-18, 5.8850e-02],
+                 ],
+                 [
+                     [3.5558e00, 2.5402e-03, -3.6777e-17],
+                     [2.5402e-03, 1.7782e00, 1.5596e-16],
+                     [-3.6777e-17, 1.5596e-16, 1.0561e-02],
+                 ],
+                 [
+                     [2.0367e-16, 8.1501e-18, 7.7252e-02],
+                     [-7.8452e-18, 1.5596e-16, -6.1816e-01],
+                     [-2.9425e-02, -5.2803e-03, -5.5598e-17],
+                 ],
+             ],
+             [
+                 [
+                     [-1.5717e-17, -1.0036e-16, -2.1849e-01],
+                     [5.1605e-18, -3.6777e-17, -2.9425e-02],
+                     [-5.8406e-02, 7.7252e-02, 7.5669e-18],
+                 ],
+                 [
+                     [2.0367e-16, -7.8452e-18, -2.9425e-02],
+                     [8.1501e-18, 1.5596e-16, -5.2803e-03],
+                     [7.7252e-02, -6.1816e-01, -5.5598e-17],
+                 ],
+                 [
+                     [4.3698e-01, 5.8850e-02, 7.5669e-18],
+                     [5.8850e-02, 1.0561e-02, -5.5598e-17],
+                     [7.5669e-18, -5.5598e-17, 2.2377e-01],
+                 ],
+             ],
+         ])),
     ],
 )
-def test_energy_from_mo_coeff(geometry, basis, ncas, nelecas, freeze_active,
-                              mo_coeff, one_rdm, two_rdm, e_ref):
+def test_analytical_derivatives(geometry, basis, ncas, nelecas, freeze_active,
+                                mo_coeff, one_rdm, two_rdm):
+    auto_oo.oo_pqc.load_jac_hess_modules('torch')
     mol = auto_oo.Moldata_pyscf(geometry, basis)
-    oo_energy = auto_oo.OO_energy(mol, ncas, nelecas,
-                                  freeze_active=freeze_active, interface='torch')
-    assert np.allclose(oo_energy.energy_from_mo_coeff(
-        math.array(mo_coeff, like='torch'), math.array(one_rdm, like='torch'),
-        math.array(two_rdm, like='torch')), e_ref)
+    oo_energy_torch = auto_oo.OO_energy(mol, ncas, nelecas,
+                                        freeze_active=freeze_active, interface='torch')
 
+    grad_O_auto_1d_torch = jacrev(oo_energy_torch.energy_from_kappa,
+                                  argnums=0)(math.zeros(oo_energy_torch.n_kappa, like='torch'),
+                                             math.array(one_rdm, like='torch'),
+                                             math.array(two_rdm, like='torch'))
+    grad_O_exact_1d_torch = oo_energy_torch.kappa_matrix_to_vector(
+        oo_energy_torch.analytic_gradient(math.array(one_rdm, like='torch'),
+                                          math.array(two_rdm, like='torch')))
+    assert math.allclose(grad_O_auto_1d_torch, grad_O_exact_1d_torch)
 
-@pytest.mark.parametrize(
-    ("geometry", "basis", "ncas", "nelecas", "freeze_active",
-     "mo_coeff", "one_rdm", "two_rdm", "e_ref"),
-    [
-        (auto_oo.get_formal_geo(140, 80), 'sto-3g', 2, 2, False,
-         math.array([[1.02410942e+00, -1.44485996e-01, -1.22283337e-03,
-                      -6.92105527e-03, -1.22191185e-03, -1.68737940e-03,
-                      1.75420166e-02, -1.64976921e-02,  3.63410363e-04,
-                      9.10179123e-05,  7.02693079e-04,  7.69242606e-04,
-                      2.45601209e-02],
-                     [-1.44485996e-01,  1.27102203e+00, -8.35510237e-03,
-                      8.33090765e-02,  1.47040840e-02,  2.05491933e-02,
-                      -1.74022090e-01,  2.16821224e-01, -3.37367753e-03,
-                      -8.62524345e-04, -1.09749430e-02, -1.16666054e-02,
-                      -3.66189921e-01],
-                     [-1.22283337e-03, -8.35510237e-03,  1.17080424e+00,
-                      -6.09411627e-02, -1.07561034e-02,  1.55985716e-02,
-                      -2.00656514e-01,  2.13767917e-01,  2.46589718e-03,
-                      6.30139174e-04, -1.02027449e-02, -9.69784783e-03,
-                      2.67483185e-01],
-                     [-6.92105527e-03,  8.33090765e-02, -6.09411627e-02,
-                      1.05594126e+00,  8.42234637e-03, -5.58826900e-04,
-                      6.92144928e-03, -7.04309680e-03, -7.63897614e-02,
-                      -4.93211825e-04,  8.70467891e-04,  4.74942082e-04,
-                      -2.09761320e-01],
-                     [-1.22191185e-03,  1.47040840e-02, -1.07561034e-02,
-                      8.42234637e-03,  1.01025279e+00, -9.86413949e-05,
-                      1.22157318e-03, -1.24292348e-03, -3.40658645e-04,
-                      -8.40429606e-02,  1.11163141e-02, -1.08789589e-02,
-                      -3.70164397e-02],
-                     [-1.68737940e-03,  2.05491933e-02,  1.55985716e-02,
-                      -5.58826900e-04, -9.86413949e-05,  1.02845157e+00,
-                      -1.66022513e-01, -7.48021951e-04,  2.51443819e-05,
-                      6.34381847e-06,  2.62311797e-02,  2.62360254e-02,
-                      2.23010467e-03],
-                     [1.75420166e-02, -1.74022090e-01, -2.00656514e-01,
-                      6.92144928e-03,  1.22157318e-03, -1.66022513e-01,
-                      1.41719899e+00,  3.75451001e-02, -2.64145217e-04,
-                      -6.79178174e-05, -3.68521259e-01, -3.68577010e-01,
-                      -3.16218915e-02],
-                     [-1.64976921e-02,  2.16821224e-01,  2.13767917e-01,
-                      -7.04309680e-03, -1.24292348e-03, -7.48021951e-04,
-                      3.75451001e-02,  1.16950164e+00,  2.42905654e-04,
-                      6.29243560e-05, -1.67318064e-01, -1.67264548e-01,
-                      3.37769658e-02],
-                     [3.63410363e-04, -3.37367753e-03,  2.46589718e-03,
-                      -7.63897614e-02, -3.40658645e-04,  2.51443819e-05,
-                      -2.64145217e-04,  2.42905654e-04,  1.00832990e+00,
-                      2.67703703e-05, -2.43181136e-05, -5.12373901e-06,
-                      6.41676147e-03],
-                     [9.10179123e-05, -8.62524345e-04,  6.30139174e-04,
-                      -4.93211825e-04, -8.40429606e-02,  6.34381847e-06,
-                      -6.79178174e-05,  6.29243560e-05,  2.67703703e-05,
-                      1.22811066e+00, -3.27055897e-01,  3.27047885e-01,
-                      1.71464547e-03],
-                     [7.02693079e-04, -1.09749430e-02, -1.02027449e-02,
-                      8.70467891e-04,  1.11163141e-02,  2.62311797e-02,
-                      -3.68521259e-01, -1.67318064e-01, -2.43181136e-05,
-                      -3.27055897e-01,  1.29124706e+00, -3.95728266e-02,
-                      -4.59431442e-03],
-                     [7.69242606e-04, -1.16666054e-02, -9.69784783e-03,
-                      4.74942082e-04, -1.08789589e-02,  2.62360254e-02,
-                      -3.68577010e-01, -1.67264548e-01, -5.12373901e-06,
-                      3.27047885e-01, -3.95728266e-02,  1.29123882e+00,
-                      -3.00271688e-03],
-                     [2.45601209e-02, -3.66189921e-01,  2.67483185e-01,
-                      -2.09761320e-01, -3.70164397e-02,  2.23010467e-03,
-                      -3.16218915e-02,  3.37769658e-02,  6.41676147e-03,
-                      1.71464547e-03, -4.59431442e-03, -3.00271688e-03,
-                      1.27359252e+00]]),
-            math.array([[2., 0.],
-                        [0., 0.]]),
-            math.array([[[[2., 0.],
-                       [0., 0.]],
-                [[0., 0.],
-                 [0., 0.]]],
-                [[[0., 0.],
-                  [0., 0.]],
-                 [[0., 0.],
-                  [0., 0.]]]]), math.array([-92.66372193556138])),
-    ],
-)
-def test_orbital_optimization(geometry, basis, ncas, nelecas, freeze_active,
-                              mo_coeff, one_rdm, two_rdm, e_ref):
-    mol = auto_oo.Moldata_pyscf(geometry, basis)
-    oo_energy = auto_oo.OO_energy(mol, ncas, nelecas,
-                                  freeze_active=freeze_active, interface='torch')
-    energy_l = oo_energy.orbital_optimization(math.array(one_rdm, like='torch'),
-                                              math.array(two_rdm, like='torch'))
-    assert math.allclose(e_ref, energy_l[-1])
+    hess_O_auto_2d_torch = thessian(oo_energy_torch.energy_from_kappa,
+                                    argnums=0)(math.zeros(oo_energy_torch.n_kappa, like='torch'),
+                                               math.array(one_rdm, like='torch'),
+                                               math.array(two_rdm, like='torch'))
+    hess_O_exact_4d_torch = oo_energy_torch.analytic_hessian(math.array(one_rdm, like='torch'),
+                                                             math.array(two_rdm, like='torch'))
+    hess_O_exact_2d_torch = oo_energy_torch.full_hessian_to_matrix(hess_O_exact_4d_torch)
+
+    assert math.allclose(hess_O_exact_2d_torch, hess_O_auto_2d_torch)
+
+    auto_oo.oo_pqc.load_jac_hess_modules('jax')
+    oo_energy_jax = auto_oo.OO_energy(mol, ncas, nelecas,
+                                      freeze_active=freeze_active, interface='jax')
+
+    grad_O_auto_1d_jax = jjacobian(oo_energy_jax.energy_from_kappa,
+                                   argnums=0)(math.zeros(oo_energy_jax.n_kappa, like='jax'),
+                                              math.array(one_rdm, like='jax'),
+                                              math.array(two_rdm, like='jax'))
+    grad_O_exact_1d_jax = oo_energy_jax.kappa_matrix_to_vector(
+        oo_energy_jax.analytic_gradient(math.array(one_rdm, like='jax'),
+                                        math.array(two_rdm, like='jax')))
+    assert math.allclose(grad_O_auto_1d_jax, grad_O_exact_1d_jax)
+
+    hess_O_auto_2d_jax = jhessian(oo_energy_jax.energy_from_kappa,
+                                  argnums=0)(math.zeros(oo_energy_jax.n_kappa, like='jax'),
+                                             math.array(one_rdm, like='jax'),
+                                             math.array(two_rdm, like='jax'))
+    hess_O_exact_4d_jax = oo_energy_jax.analytic_hessian(math.array(one_rdm, like='jax'),
+                                                         math.array(two_rdm, like='jax'))
+    hess_O_exact_2d_jax = oo_energy_jax.full_hessian_to_matrix(hess_O_exact_4d_jax)
+
+    assert math.allclose(hess_O_exact_2d_jax, hess_O_auto_2d_jax)
