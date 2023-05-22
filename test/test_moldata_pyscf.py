@@ -9,13 +9,13 @@ Created on Tue May  2 16:45:23 2023
 import pytest
 
 import numpy as np
-from pyscf import gto, fci, mcscf, scf
+from pyscf import gto
 
 import auto_oo
 
 
 @pytest.mark.parametrize(
-    ("geometry, basis, oao_coeff_ref"),
+    ("geometry", "basis", "oao_coeff_ref"),
     [
         (auto_oo.get_formal_geo(140, 80), 'sto-3g',
          np.array([[1.02410942e+00, -1.44485996e-01, -1.22283337e-03,
@@ -92,21 +92,13 @@ def test_ao_to_oao(geometry, basis, oao_coeff_ref, **kwargs):
     assert np.allclose(oao_coeff, oao_coeff_ref)
 
 
-def test_active_space_indices():
-    pass
-
-
-def test_fci():
-    pass
-
-
-def test_casci():
-    pass
-
-
-def test_casscf():
-    pass
-
-
-def test_sa_casscf():
-    pass
+@pytest.mark.parametrize(
+    ("geometry", "basis", "nroots", "e_ref"),
+    [
+        ('H 0 0 0; F 0 0 1.1', 'sto-3g', 2, np.array([-98.595121449139, -98.283973390815]))
+    ],
+)
+def test_fci(geometry, basis, nroots, e_ref):
+    mol = auto_oo.Moldata_pyscf(geometry, basis)
+    mol.run_fci(nroots)
+    assert np.allclose(np.array(mol.fci.e_tot), e_ref)

@@ -10,16 +10,21 @@ import numpy as np
 import pennylane as qml
 from pennylane import math
 
-# These two functions can be used on a high-memory machine:
-# from functorch import jacfwd
-# from functorch import hessian
-# from torch.autograd.functional import jacobian, hessian
-from jax import jacobian, hessian
 
 from auto_oo.oo_energy import OO_energy
 from auto_oo.pqc import Parameterized_circuit
 from auto_oo.moldata_pyscf import Moldata_pyscf
 from auto_oo.utils.newton_raphson import NewtonStep
+
+
+def load_jac_hess_modules(interface):
+    global jacobian
+    global hessian
+    if interface == 'torch':
+        from torch.autograd.functional import jacobian
+        from torch.autograd.functional import hessian
+    if interface == 'jax':
+        from jax import jacobian, hessian
 
 
 class OO_pqc(OO_energy):
@@ -54,6 +59,7 @@ class OO_pqc(OO_energy):
                          oao_mo_coeff=oao_mo_coeff, freeze_active=freeze_active,
                          interface=interface)
         self.pqc = pqc
+        load_jac_hess_modules(interface)
 
     def energy_from_parameters(self, theta, kappa=None):
         r"""
@@ -80,8 +86,12 @@ class OO_pqc(OO_energy):
 
     def circuit_gradient(self, theta):
         """Calculate the electronic gradient w.r.t. circuit parameters"""
-        # return jacobian(self.energy_from_parameters, theta).reshape(np.prod(self.pqc.theta_shape))
-        return jacobian(self.energy_from_parameters)(theta).reshape(np.prod(self.pqc.theta_shape))
+        if self.interface == 'torch':
+            return jacobian(self.energy_from_parameters, theta).reshape(
+                np.prod(self.pqc.theta_shape))
+        elif self.interface == 'jax':
+            return jacobian(self.energy_from_parameters, argnums=0)(theta).reshape(
+                np.prod(self.pqc.theta_shape))
         # return jacfwd(self.energy_from_parameters)(theta).reshape(
         #     np.prod(self.pqc.theta_shape))
 
@@ -94,21 +104,25 @@ class OO_pqc(OO_energy):
 
     def circuit_circuit_hessian(self, theta):
         """Calculate the electronic hessian w.r.t circuit parameters"""
-        # return hessian(self.energy_from_parameters, theta).reshape(
-        #     np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape)
-        # )
-        return hessian(self.energy_from_parameters)(theta).reshape(
-            np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
+        if self.interface == 'torch':
+            return hessian(self.energy_from_parameters, theta).reshape(
+                np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape)
+            )
+        elif self.interface == 'jax':
+            return hessian(self.energy_from_parameters)(theta).reshape(
+                np.prod(self.pqc.theta_shape), np.prod(self.pqc.theta_shape))
 
     def orbital_circuit_hessian(self, theta):
         """Generate the mixed orbital-pqc parameter hessian by automatic differentation
         of the analytic orbital gradient"""
-        # return jacobian(self.orbital_gradient, theta).reshape(
-        #     self.n_kappa, np.prod(self.pqc.theta_shape)
-        # )
-        return jacobian(self.orbital_gradient)(theta).reshape(
-            self.n_kappa, np.prod(self.pqc.theta_shape)
-        )
+        if self.interface == 'torch':
+            return jacobian(self.orbital_gradient, theta).reshape(
+                self.n_kappa, np.prod(self.pqc.theta_shape)
+            )
+        elif self.interface == 'jax':
+            return jacobian(self.orbital_gradient, argnums=0)(theta).reshape(
+                self.n_kappa, np.prod(self.pqc.theta_shape)
+            )
         # return jacfwd(self.orbital_gradient)(theta).reshape(
         #     self.n_kappa, np.prod(self.pqc.theta_shape))
 
@@ -174,12 +188,12 @@ class OO_pqc(OO_energy):
             theta = new_theta_kappa[0].reshape(self.pqc.theta_shape)
             kappa = new_theta_kappa[1]
 
-            theta_l.append(math.array(theta, like='numpy'))
-            kappa_l.append(math.array(theta, like='numpy'))
+            theta_l.append(theta)
+            kappa_l.append(theta)  # , like='numpy'))
 
             self.oao_mo_coeff = self.oao_mo_coeff @ self.kappa_to_mo_coeff(kappa)
 
-            oao_mo_coeff_l.append(math.array(self.oao_mo_coeff, like='numpy'))
+            oao_mo_coeff_l.append(self.oao_mo_coeff)  # math.array(self.oao_mo_coeff, like='numpy'))
 
             energy = self.energy_from_parameters(theta).item()
             energy_l.append(energy)
@@ -219,11 +233,12 @@ if __name__ == "__main__":
     basis = "sto-3g"
     mol = Moldata_pyscf(geometry, basis)
 
-    ncas = 3
-    nelecas = 4
+    ncas = 2
+    nelecas = 2
     dev = qml.device("default.qubit", wires=2 * ncas)
 
-    interface = 'jax'
+    interface = 'torch'
+
     if interface == 'torch':
         torch.set_default_tensor_type(torch.DoubleTensor)
         torch.set_num_threads(12)
@@ -282,16 +297,17 @@ if __name__ == "__main__":
 
     import time
 
-    from jax import jacobian, hessian
+    # from jax import jacobian, hessian
+    load_jac_hess_modules(interface)
     t0 = time.time()
-    # grad_auto = jacobian(oo_pqc.energy_from_parameters, (theta, kappa))
-    grad_auto = jacobian(oo_pqc.energy_from_parameters, argnums=(0, 1))(theta, kappa)
+    grad_auto = jacobian(oo_pqc.energy_from_parameters, (theta, kappa))
+    # grad_auto = jacobian(oo_pqc.energy_from_parameters, argnums=(0, 1))(theta, kappa)
 
     # grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
     #     theta,kappa)
-    # hess_auto = hessian(oo_pqc.energy_from_parameters, (theta, kappa))
-    hess_auto = hessian(oo_pqc.energy_from_parameters,
-                        argnums=(0, 1))(theta, kappa)
+    hess_auto = hessian(oo_pqc.energy_from_parameters, (theta, kappa))
+    # hess_auto = hessian(oo_pqc.energy_from_parameters,
+    #                     argnums=(0, 1))(theta, kappa)
 
     grad_C = grad_auto[0].reshape(np.prod(pqc.theta_shape))
     hess_CC = hess_auto[0][0].reshape(np.prod(pqc.theta_shape), np.prod(pqc.theta_shape))

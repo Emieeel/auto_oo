@@ -142,17 +142,16 @@ class OO_energy:
                 Freeze active-active oo indices
         """
 
-        like = math.zeros(1, like=interface)
-
         if oao_mo_coeff is None:
             mol.run_rhf()
             # print("Initialized with canonical HF MOs")
-            self.oao_mo_coeff = math.convert_like(
-                mo_ao_to_mo_oao(mol.hf.mo_coeff, mol.overlap), like)
+            self.oao_mo_coeff = math.array(mo_ao_to_mo_oao(mol.hf.mo_coeff, mol.overlap),
+                                           like=interface)
         else:
-            self.oao_mo_coeff = math.convert_like(oao_mo_coeff, like)
+            self.oao_mo_coeff = math.array(oao_mo_coeff, like=interface)
 
-        print("Interface:", math.get_interface(like))
+        print("Interface:", interface)
+        self.interface = interface
 
         # Set molecular data
         self.int1e_ao = math.convert_like(mol.int1e_ao, self.oao_mo_coeff)
