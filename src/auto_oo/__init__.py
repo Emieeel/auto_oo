@@ -22,5 +22,6 @@ from .utils import (
     molecular_hamiltonian_coefficients,
     fermionic_cas_hamiltonian,
     scipy_csc_to_torch,
+    scipy_csc_to_jax,
     get_formal_geo
 )

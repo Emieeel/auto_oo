@@ -8,6 +8,6 @@ from .active_space import (
     sz
 )
 
-from .miscellaneous import scipy_csc_to_torch, get_formal_geo
+from .miscellaneous import scipy_csc_to_torch, scipy_csc_to_jax, get_formal_geo
 
 from .newton_raphson import NewtonStep

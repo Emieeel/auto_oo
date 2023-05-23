@@ -31,5 +31,7 @@ dependencies = [
 
 [tool.pytest.ini_options]
 filterwarnings = [
-    "ignore::DeprecationWarning"
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::UserWarning"
 ]
