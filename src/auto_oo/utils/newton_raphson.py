@@ -181,11 +181,13 @@ class NewtonStep():
         if self.verbose:
             print("new energy:", new_energy)
             print("old energy:", energy)
-            print("wolfe:", wolfe(t, gradient, dp, alpha=self.alpha))
+            # print("wolfe:", wolfe(t, gradient, dp, alpha=self.alpha))
         if nargs > 1:
             new_parameters = tuple(split_list_shapes(newp, paramshapes))
         else:
             new_parameters = newp
+        # import pdb
+        # pdb.set_trace()
 
         return new_parameters, new_energy
 
