@@ -26,8 +26,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/Emieeel/auto_oo"
-"Bug Tracker" = "https://github.com/Emieeel/auto_oo/issues"
+"Homepage" = "https://github.com/EmielKoridon/auto_oo"
+"Bug Tracker" = "https://github.com/EmielKoridon/auto_oo/issues"
 
 [tool.pytest.ini_options]
 filterwarnings = [

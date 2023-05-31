@@ -79,7 +79,7 @@ def vector_to_skew_symmetric(vector):
     Args:
         vector (torch.Tensor): 1d tensor
     """
-    size = int(np.sqrt(8 * len(vector) + 1) + 1) // 2
+    size = int(np.sqrt(8 * math.shape(vector)[0] + 1) + 1) // 2
     matrix = math.convert_like(math.zeros((size, size)), vector)
     tril_indices = np.tril_indices(size, k=-1)
     matrix = math.set_index(
