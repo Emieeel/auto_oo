@@ -171,7 +171,7 @@ class OO_pqc(OO_energy):
         energy_l = []
         hess_eig_l = []
 
-        theta = math.array(theta_init)
+        theta = theta_init
         for n in range(max_iterations):
 
             kappa = math.convert_like(math.zeros(self.n_kappa), theta_init)
@@ -248,7 +248,7 @@ if __name__ == "__main__":
 
     pqc = Parameterized_circuit(
         ncas, nelecas, dev,
-        ansatz="np_fabric", n_layers=3, add_singles=True, interface=interface
+        ansatz="np_fabric", n_layers=1, add_singles=True, interface=interface
     )
     # theta = torch.rand_like(pqc.init_zeros())
     theta = pqc.init_zeros()
@@ -281,8 +281,7 @@ if __name__ == "__main__":
     kappa = math.zeros(oo_pqc.n_kappa, like=interface)
     energy_test = oo_pqc.energy_from_parameters(theta, kappa)
     print("theta:", theta)
-    print("state:", dirac_notation(
-        math.convert_like(math.detach(state), np.zeros(1))))
+    print("state:", dirac_notation(math.array(state, like='numpy')))
     print("Expectation value of Hamiltonian:", energy_test.item())
     print("HF energy:", mol.hf.e_tot)
 

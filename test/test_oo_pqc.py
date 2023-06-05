@@ -15,8 +15,8 @@ import auto_oo
 
 from jax import jacobian as jjacobian
 from jax import hessian as jhessian
-from torch.func import hessian as thessian
-from torch.func import jacrev as tjacobian
+from torch.autograd.functional import jacobian as tjacobian
+from torch.autograd.functional import hessian as thessian
 
 import torch
 from jax.config import config
@@ -92,13 +92,14 @@ def test_full_derivatives(geometry, basis, ncas, nelecas, n_layers,
                                               ansatz='np_fabric', n_layers=n_layers,
                                               interface='torch')
     oo_pqc_torch = auto_oo.OO_pqc(pqc_torch, mol, ncas, nelecas,
-                                  oao_mo_coeff=oao_mo_coeff, freeze_active=freeze_active)
+                                  oao_mo_coeff=oao_mo_coeff, freeze_active=freeze_active,
+                                  interface='torch')
 
     theta_torch = math.array(theta, like='torch')
     kappa_torch = math.zeros(oo_pqc_torch.n_kappa, like='torch')
 
     grad_auto_torch = tjacobian(
-        oo_pqc_torch.energy_from_parameters, argnums=(0, 1))(theta_torch, kappa_torch)
+        oo_pqc_torch.energy_from_parameters, (theta_torch, kappa_torch))
 
     grad_exact_C_torch = oo_pqc_torch.circuit_gradient(theta_torch)
     grad_exact_O_torch = oo_pqc_torch.orbital_gradient(theta_torch)
@@ -107,7 +108,7 @@ def test_full_derivatives(geometry, basis, ncas, nelecas, n_layers,
     assert math.allclose(grad_auto_torch[1], grad_exact_O_torch)
 
     hess_auto_torch = thessian(
-        oo_pqc_torch.energy_from_parameters, argnums=(0, 1))(theta_torch, kappa_torch)
+        oo_pqc_torch.energy_from_parameters, (theta_torch, kappa_torch))
 
     hessian_C_C_torch = oo_pqc_torch.circuit_circuit_hessian(theta_torch)
     hessian_C_O_torch = oo_pqc_torch.orbital_circuit_hessian(theta_torch)
@@ -150,7 +151,10 @@ def test_full_derivatives(geometry, basis, ncas, nelecas, n_layers,
 @pytest.mark.parametrize(
     ("geometry", "basis", "ncas", "nelecas", "n_layers", "freeze_active"),
     [
-        (auto_oo.get_formal_geo(140, 80), 'sto-3g', 2, 2, 1, True)
+        (auto_oo.get_formal_geo(140, 80), 'sto-3g', 2, 2, 1, True),
+        (auto_oo.get_formal_geo(140, 80), 'sto-3g', 3, 4, 2, True),
+        (auto_oo.get_formal_geo(140, 80), 'sto-3g', 3, 2, 2, True),
+        (auto_oo.get_formal_geo(140, 80), 'cc-pvdz', 2, 2, 1, True)
     ],
 )
 def test_full_optimization(geometry, basis, ncas, nelecas, n_layers, freeze_active):

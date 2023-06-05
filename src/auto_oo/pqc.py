@@ -177,6 +177,8 @@ class Parameterized_circuit():
                                 like=math.get_interface(theta))
         theta_full = math.set_index(theta_full, self.params_idx, theta)
         theta_full = math.reshape(theta_full, self.full_theta_shape)
+        # import pdb
+        # pdb.set_trace()
         return gatefabric_circuit(theta_full, self.wires, self.hfstate)
 
     def init_zeros(self):
