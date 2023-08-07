@@ -213,6 +213,9 @@ class Parameterized_circuit():
                                          (state @ (self.e_pqrs[p][q][r][s] @ state)).real)
         return one_rdm, two_rdm
 
+    def get_rdms(self, theta, restricted=True):
+        return self.get_rdms_from_state(self.qnode(theta), restricted=restricted)
+
     def draw_circuit(self, theta):
         """Draw the qnode circuit for a given theta."""
         return qml.draw(self.qnode, expansion_strategy='device')(theta)

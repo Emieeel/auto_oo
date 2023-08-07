@@ -80,8 +80,7 @@ class OO_pqc(OO_energy):
             mo_coeff = self.mo_coeff
         else:
             mo_coeff = self.get_transformed_mo(self.mo_coeff, kappa)
-        state = self.pqc.qnode(theta)
-        one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
+        one_rdm, two_rdm = self.pqc.get_rdms(theta)
         return self.energy_from_mo_coeff(mo_coeff, one_rdm, two_rdm)
 
     def circuit_gradient(self, theta):
@@ -98,8 +97,7 @@ class OO_pqc(OO_energy):
     def orbital_gradient(self, theta):
         """Generate analytically the flattened electronic gradient w.r.t. orbital rotation
         parameters for a given set of circuit parameters"""
-        state = self.pqc.qnode(theta)
-        one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
+        one_rdm, two_rdm = self.pqc.get_rdms(theta)
         return self.kappa_matrix_to_vector(self.analytic_gradient(one_rdm, two_rdm))
 
     def circuit_circuit_hessian(self, theta):
@@ -128,8 +126,7 @@ class OO_pqc(OO_energy):
 
     def orbital_orbital_hessian(self, theta):
         """Generate the electronic Hessian w.r.t. orbital rotations"""
-        state = self.pqc.qnode(theta)
-        one_rdm, two_rdm = self.pqc.get_rdms_from_state(state)
+        one_rdm, two_rdm = self.pqc.get_rdms(theta)
         return self.full_hessian_to_matrix(self.analytic_hessian(one_rdm, two_rdm))
 
     def full_gradient(self, theta):
