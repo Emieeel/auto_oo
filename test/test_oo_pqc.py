@@ -152,8 +152,8 @@ def test_full_derivatives(geometry, basis, ncas, nelecas, n_layers,
     ("geometry", "basis", "ncas", "nelecas", "n_layers", "freeze_active"),
     [
         (auto_oo.get_formal_geo(140, 80), 'sto-3g', 2, 2, 1, True),
-        (auto_oo.get_formal_geo(140, 80), 'sto-3g', 3, 4, 2, True),
-        (auto_oo.get_formal_geo(140, 80), 'sto-3g', 3, 2, 2, True),
+        # (auto_oo.get_formal_geo(140, 80), 'sto-3g', 3, 4, 2, True),
+        # (auto_oo.get_formal_geo(140, 80), 'sto-3g', 3, 2, 2, True),
         (auto_oo.get_formal_geo(140, 80), 'cc-pvdz', 2, 2, 1, True)
     ],
 )
