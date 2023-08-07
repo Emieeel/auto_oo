@@ -150,7 +150,6 @@ class OO_energy:
         else:
             self.oao_mo_coeff = math.array(oao_mo_coeff, like=interface)
 
-        print("Interface:", interface)
         self.interface = interface
 
         # Set molecular data
