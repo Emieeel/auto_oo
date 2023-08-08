@@ -20,10 +20,10 @@ class Moldata_pyscf():
     def __init__(self, geometry, basis, **kwargs):
         """
         Class that can import molecular info from PySCF
- 
+
         Args:
             geometry: geometry of molecule
-            basis: name of basis set          
+            basis: name of basis set
         """
         self.mol = gto.Mole(atom=geometry, basis=basis, **kwargs)
         self.mol.build()

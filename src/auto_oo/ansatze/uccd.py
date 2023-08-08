@@ -16,7 +16,7 @@ from pennylane.ops import BasisState
 
 class UCCD(Operation):
     r"""Implements the Unitary Coupled-Cluster Doubles (UCCD) ansatz.
-    
+
     Adapted from UCCSD class of PennyLane, removing the single excitations.
     See https://github.com/PennyLaneAI/pennylane/blob/master/pennylane/templates/subroutines/uccsd.py
 
@@ -76,7 +76,6 @@ class UCCD(Operation):
     def num_params(self):
         return 1
 
-
     @staticmethod
     def compute_decomposition(
         weights, wires, d_wires, init_state
@@ -125,8 +124,8 @@ def generalized_pair_doubles(wires):
     """
     pair_gen_doubles_wires = [
         [
-            wires[r : r + 2],
-            wires[p : p + 2],
+            wires[r: r + 2],
+            wires[p: p + 2],
         ]  # wires for [wires[r], wires[r+1], wires[p], wires[p+1]] terms
         for r in range(0, len(wires) - 1, 2)
         for p in range(0, len(wires) - 1, 2)

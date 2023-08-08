@@ -138,14 +138,14 @@ class OO_pqc(OO_energy):
         hessian_vqe_vqe = self.circuit_circuit_hessian(theta)
         hessian_vqe_oo = self.orbital_circuit_hessian(theta)
         hessian_oo_oo = self.orbital_orbital_hessian(theta)
-        hessian = math.concatenate(
+        hess = math.concatenate(
             (
                 math.concatenate((hessian_vqe_vqe, math.transpose(hessian_vqe_oo)), axis=1),
                 math.concatenate((hessian_vqe_oo, hessian_oo_oo), axis=1),
             ),
             axis=0,
         )
-        return hessian
+        return hess
 
     def full_circuit_hessian_to_matrix(self, full_circuit_hessian):
         theta_shape = self.pqc.theta_shape
@@ -173,11 +173,11 @@ class OO_pqc(OO_energy):
 
             kappa = math.convert_like(math.zeros(self.n_kappa), theta_init)
 
-            gradient = self.full_gradient(theta)
-            hessian = self.full_hessian(theta)
+            grad = self.full_gradient(theta)
+            hess = self.full_hessian(theta)
 
             new_theta_kappa, hess_eig = opt.damped_newton_step(
-                self.energy_from_parameters, (theta, kappa), gradient, hessian
+                self.energy_from_parameters, (theta, kappa), grad, hess
             )
 
             hess_eig_l.append(hess_eig)
@@ -211,7 +211,6 @@ if __name__ == "__main__":
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
     import torch
-    import jax.numpy as jnp
 
     def get_formal_geo(alpha, phi):
         variables = [1.498047, 1.066797, 0.987109, 118.359375] + [alpha, phi]
@@ -230,29 +229,28 @@ if __name__ == "__main__":
     basis = "sto-3g"
     mol = Moldata_pyscf(geometry, basis)
 
-    ncas = 2
-    nelecas = 2
+    ncas = 3
+    nelecas = 4
     dev = qml.device("default.qubit", wires=2 * ncas)
 
     interface = 'torch'
 
     if interface == 'torch':
         torch.set_default_tensor_type(torch.DoubleTensor)
-        torch.set_num_threads(12)
     elif interface == 'jax':
         from jax.config import config
         config.update("jax_enable_x64", True)
 
     pqc = Parameterized_circuit(
         ncas, nelecas, dev,
-        ansatz="np_fabric", n_layers=1, add_singles=True, interface=interface
+        ansatz="np_fabric", n_layers=4, add_singles=True, interface=interface
     )
-    # theta = torch.rand_like(pqc.init_zeros())
+
     theta = pqc.init_zeros()
     state = pqc.qnode(theta)
+
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
 
-    # , oao_mo_coeff = oao_mo_coeff)
     oo_pqc = OO_pqc(pqc, mol, ncas, nelecas,
                     freeze_active=True, interface=interface)
 
@@ -264,10 +262,6 @@ if __name__ == "__main__":
     oao_mo_coeff = math.convert_like(mo_ao_to_mo_oao(mol.casscf.mo_coeff, mol.overlap),
                                      theta)
 
-    # from scipy.stats import ortho_group
-    # mo_transform = torch.from_numpy(ortho_group.rvs(mol.nao))
-    # oao_mo_coeff = mo_transform
-    # oao_mo_coeff = torch.eye(mol.nao)
     oo_pqc.oao_mo_coeff = oao_mo_coeff
     print(
         "check if property works:",
@@ -293,17 +287,11 @@ if __name__ == "__main__":
 
     import time
 
-    # from jax import jacobian, hessian
     load_jac_hess_modules(interface)
     t0 = time.time()
     grad_auto = jacobian(oo_pqc.energy_from_parameters, (theta, kappa))
-    # grad_auto = jacobian(oo_pqc.energy_from_parameters, argnums=(0, 1))(theta, kappa)
 
-    # grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
-    #     theta,kappa)
     hess_auto = hessian(oo_pqc.energy_from_parameters, (theta, kappa))
-    # hess_auto = hessian(oo_pqc.energy_from_parameters,
-    #                     argnums=(0, 1))(theta, kappa)
 
     grad_C = grad_auto[0].reshape(np.prod(pqc.theta_shape))
     hess_CC = hess_auto[0][0].reshape(np.prod(pqc.theta_shape), np.prod(pqc.theta_shape))
@@ -368,48 +356,3 @@ if __name__ == "__main__":
     plt.title(f"CC hessian lowest eigenvector of eigval={vhess_CC[0]:.4f}")
     plt.plot(whess_CC[:, 0], ".")
     plt.show()
-
-    # orbgrad_auto_flat = orbgrad_auto[1]
-    # orbgrad_exact_flat = oo_pqc.kappa_matrix_to_vector(orbgrad_exact)
-
-    # t0 = time.time()
-    # orbhess_auto_comp = hessian(oo_pqc.energy_from_parameters,
-    #                             argnums=(0,1))(theta, kappa)
-    # # orbhess_auto_comp = torch.autograd.functional.hessian(oo_pqc.energy_from_parameters,
-    # #                                                       (theta, kappa))
-    # print("time took to calc hess with automatic diff:", time.time()-t0)
-    # orbhess_auto_kappa_theta = orbhess_auto_comp[0][1]
-
-    # t1 = time.time()
-    # orbhess_exact_kappa_theta = oo_pqc.orbital_circuit_hessian(theta)
-    # print("time took to calc mixed hess with exact/automatic took:", time.time()-t1)
-
-    # plt.title('kappa-theta hessian automatic diff')
-    # plt.imshow(orbhess_auto_kappa_theta)
-    # plt.colorbar()
-    # plt.show()
-    # plt.title('kappa-theta hessian exact autodiff')
-    # plt.imshow(orbhess_exact_kappa_theta.t())
-    # plt.colorbar()
-    # plt.show()
-
-    # orborbhess_auto = orbhess_auto_comp[1][1]
-    # t2 = time.time()
-    # orborbhess_exact_full = oo_pqc.orbital_hessian(one_rdm, two_rdm)
-    # orborbhess_exact = oo_pqc.full_hessian_to_matrix(orborbhess_exact_full)
-    # print("time took to calc orb-orb hess with exact method took:", time.time()-t2)
-
-    # plt.title('kappa-kappa hessian automatic diff')
-    # plt.imshow(orborbhess_auto)
-    # plt.colorbar()
-    # plt.show()
-    # plt.title('kappa-kappa hessian exact')
-    # plt.imshow(orborbhess_exact)
-    # plt.colorbar()
-    # plt.show()
-
-    # orborb_diff = torch.abs(orborbhess_auto - orborbhess_exact)
-    # plt.title('kappa-kappa auto exact diff')
-    # plt.imshow(orborb_diff)
-    # plt.colorbar()
-    # plt.show()

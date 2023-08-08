@@ -90,14 +90,14 @@ class Noisy_OO_pqc(OO_pqc):
         hessian_vqe_vqe = self.noisy_circuit_circuit_hessian(theta, variance)
         hessian_vqe_oo = self.noisy_orbital_circuit_hessian(theta, variance)
         hessian_oo_oo = self.noisy_orbital_orbital_hessian(theta, variance)
-        hessian = torch.cat(
+        hess = torch.cat(
             (
                 torch.cat((hessian_vqe_vqe, hessian_vqe_oo.t()), dim=1),
                 torch.cat((hessian_vqe_oo, hessian_oo_oo), dim=1),
             ),
             dim=0,
         )
-        return hessian
+        return hess
 
     def full_noisy_optimization(
         self, theta_init, max_iterations=50, conv_tol=1e-10, verbose=0, **kwargs
@@ -118,11 +118,11 @@ class Noisy_OO_pqc(OO_pqc):
 
             kappa = torch.zeros(self.n_kappa)
 
-            gradient = self.full_noisy_gradient(theta)
-            hessian = self.full_noisy_hessian(theta)
+            grad = self.full_noisy_gradient(theta)
+            hess = self.full_noisy_hessian(theta)
 
             new_theta_kappa, hess_eig = opt.damped_newton_step(
-                self.energy_from_parameters, (theta, kappa), gradient, hessian
+                self.energy_from_parameters, (theta, kappa), grad, hess
             )
 
             hess_eig_l.append(hess_eig)
@@ -150,165 +150,3 @@ class Noisy_OO_pqc(OO_pqc):
                     break
 
         return energy_l, theta_l, kappa_l, oao_mo_coeff_l, hess_eig_l
-
-
-if __name__ == "__main__":
-    from cirq import dirac_notation
-    import matplotlib.pyplot as plt
-
-    torch.set_num_threads(12)
-
-    def get_formal_geo(alpha, phi):
-        variables = [1.498047, 1.066797, 0.987109, 118.359375] + [alpha, phi]
-        geom = """
-                        N
-                        C 1 {0}
-                        H 2 {1}  1 {3}
-                        H 2 {1}  1 {3} 3 180
-                        H 1 {2}  2 {4} 3 {5}
-                        """.format(
-            *variables
-        )
-        return geom
-
-    geometry = get_formal_geo(140, 80)
-    basis = "sto-3g"
-    mol = Moldata_pyscf(geometry, basis)
-
-    ncas = 3
-    nelecas = 4
-    dev = qml.device("default.qubit", wires=2 * ncas)
-    pqc = Parameterized_circuit(ncas, nelecas, dev, add_singles=False)
-    theta = torch.rand_like(pqc.init_zeros())
-    # theta = pqc.init_zeros()
-    state = pqc.qnode(theta)
-    one_rdm, two_rdm = pqc.get_rdms_from_state(state)
-
-    variance = 0.1
-    # , oao_mo_coeff = oao_mo_coeff)
-    oo_pqc = noisy_OO_pqc(pqc, mol, ncas, nelecas)
-
-    # mo_coeff = torch.from_numpy(mol.oao_coeff)
-    # from scipy.stats import ortho_group
-    # mo_transform = torch.from_numpy(ortho_group.rvs(mol.nao))
-    # oao_mo_coeff = mo_transform
-    # oao_mo_coeff = torch.eye(mol.nao)
-    # oo_pqc.oao_mo_coeff = oao_mo_coeff
-    # print("check if property works:",
-    #       torch.allclose(oo_pqc.mo_coeff, torch.from_numpy(mol.oao_coeff) @ oao_mo_coeff)     )
-
-    kappa = torch.zeros(oo_pqc.n_kappa)
-    energy_test = oo_pqc.energy_from_parameters(theta, kappa)
-    print("theta:", theta)
-    print("state:", dirac_notation(state.detach().numpy()))
-    print("Expectation value of Hamiltonian:", energy_test.item())
-    mol.run_rhf()
-    print("HF energy:", mol.hf.e_tot)
-
-    plt.title("one rdm")
-    plt.imshow(one_rdm)
-    plt.colorbar()
-    plt.show()
-    plt.title("two rdm")
-    plt.imshow(two_rdm.reshape(ncas**2, ncas**2))
-    plt.colorbar()
-    plt.show()
-
-    import time
-
-    t0 = time.time()
-    grad_auto = jacobian(oo_pqc.energy_from_parameters, (theta, kappa))
-    # grad_auto = jacfwd(oo_pqc.energy_from_parameters, argnums=(0,1))(
-    #     theta,kappa)
-    hess_auto = hessian(oo_pqc.energy_from_parameters, (theta, kappa))
-    # hess_auto = hessian(oo_pqc.energy_from_parameters,
-    #                     argnums=(0,1))(theta, kappa)
-    print("time took to generate everything with auto-differentation:", time.time() - t0)
-
-    t1 = time.time()
-    noisy_C = oo_pqc.noisy_circuit_gradient(theta, variance)
-    noisy_CC = oo_pqc.noisy_circuit_circuit_hessian(theta, variance)
-    noisy_CO = oo_pqc.noisy_orbital_circuit_hessian(theta, variance)
-    C_diff = grad_auto[0] - noisy_C
-    CC_diff = hess_auto[0][0] - noisy_CC
-    CO_diff = hess_auto[1][0] - noisy_CO
-    print("Sum of differences:\n")
-    print(
-        "gradient C:",
-        torch.sum(C_diff).item(),
-        "\nhess CC:",
-        torch.sum(CC_diff).item(),
-        "\nhess CO:",
-        torch.sum(CO_diff).item(),
-    )
-    print("\ntime took to generate full hessian but orbital part analytically:", time.time() - t1)
-
-    plt.title("circuit gradient diff with noise")
-    plt.imshow(C_diff.reshape(2, 2))
-    plt.colorbar()
-    plt.show()
-    plt.title("CC hessian diff with noise")
-    plt.imshow(CC_diff)
-    plt.colorbar()
-    plt.show()
-    plt.title("CO hessian diff with noise")
-    plt.imshow(CO_diff)
-    plt.colorbar()
-    plt.show()
-
-    # orbgrad_auto_2d = oo_pqc.kappa_vector_to_matrix(orbgrad_auto[1])
-    # orbgrad_exact = oo_pqc.orbital_gradient(one_rdm, two_rdm)
-
-    # plt.title('automatic diff orbital gradient')
-    # plt.imshow(orbgrad_auto_2d)
-    # plt.colorbar()
-    # plt.show()
-    # plt.title('exact orbital gradient')
-    # plt.imshow(orbgrad_exact)
-    # plt.colorbar()
-    # plt.show()
-
-    # orbgrad_auto_flat = orbgrad_auto[1]
-    # orbgrad_exact_flat = oo_pqc.kappa_matrix_to_vector(orbgrad_exact)
-
-    # t0 = time.time()
-    # orbhess_auto_comp = hessian(oo_pqc.energy_from_parameters,
-    #                             argnums=(0,1))(theta, kappa)
-    # # orbhess_auto_comp = torch.autograd.functional.hessian(oo_pqc.energy_from_parameters,
-    # #                                                       (theta, kappa))
-    # print("time took to calc hess with automatic diff:", time.time()-t0)
-    # orbhess_auto_kappa_theta = orbhess_auto_comp[0][1]
-
-    # t1 = time.time()
-    # orbhess_exact_kappa_theta = oo_pqc.orbital_circuit_hessian(theta)
-    # print("time took to calc mixed hess with exact/automatic took:", time.time()-t1)
-
-    # plt.title('kappa-theta hessian automatic diff')
-    # plt.imshow(orbhess_auto_kappa_theta)
-    # plt.colorbar()
-    # plt.show()
-    # plt.title('kappa-theta hessian exact autodiff')
-    # plt.imshow(orbhess_exact_kappa_theta.t())
-    # plt.colorbar()
-    # plt.show()
-
-    # orborbhess_auto = orbhess_auto_comp[1][1]
-    # t2 = time.time()
-    # orborbhess_exact_full = oo_pqc.orbital_hessian(one_rdm, two_rdm)
-    # orborbhess_exact = oo_pqc.full_hessian_to_matrix(orborbhess_exact_full)
-    # print("time took to calc orb-orb hess with exact method took:", time.time()-t2)
-
-    # plt.title('kappa-kappa hessian automatic diff')
-    # plt.imshow(orborbhess_auto)
-    # plt.colorbar()
-    # plt.show()
-    # plt.title('kappa-kappa hessian exact')
-    # plt.imshow(orborbhess_exact)
-    # plt.colorbar()
-    # plt.show()
-
-    # orborb_diff = torch.abs(orborbhess_auto - orborbhess_exact)
-    # plt.title('kappa-kappa auto exact diff')
-    # plt.imshow(orborb_diff)
-    # plt.colorbar()
-    # plt.show()

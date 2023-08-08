@@ -234,30 +234,28 @@ class Parameterized_circuit():
 if __name__ == '__main__':
     from cirq import dirac_notation
     import matplotlib.pyplot as plt
+    import torch
 
     ncas = 3
     nelecas = 4
     dev = qml.device('default.qubit', wires=2*ncas)
     interface = 'torch'
 
+    torch.set_default_tensor_type(torch.DoubleTensor)
+
     np.random.seed(30)
 
     pqc = Parameterized_circuit(ncas, nelecas, dev,
                                 ansatz='np_fabric', n_layers=2,
                                 add_singles=False, interface=interface)
-    # print(pqc.redundant_idx)
 
-    theta = math.convert_like(
-        math.random.rand(*math.shape(pqc.init_zeros())), math.zeros(1, like=interface))
-    theta = math.cast(theta, np.float32)
-    # theta = pqc.init_zeros()
-    # theta = torch.Tensor([[[-0.2,0.3]],
-    #                       [[-0.2,0.1]]])
+    theta = math.array(
+        math.random.rand(*math.shape(pqc.init_zeros())), like=interface)
+
     state = pqc.qnode(theta)
     print("theta = ", theta)
-    print("state:", dirac_notation(math.convert_like(math.detach(state),
-                                                     math.zeros(1, like='numpy'))))
-    # # pqc.up_then_down = False
+    print("state:", dirac_notation(math.array(math.detach(state), like='numpy')))
+
     one_rdm, two_rdm = pqc.get_rdms_from_state(state)
     plt.imshow(one_rdm)
     plt.colorbar()
@@ -280,9 +278,3 @@ if __name__ == '__main__':
         # grad = theta.grad
     elif interface == 'autograd':
         grad = qml.grad(rdms_from_theta, argnum=0)(theta)
-
-    #
-
-    # grad_check = qml.jacobian(rdms_from_theta, argnum=0)(theta)
-
-    # # def cost(theta):

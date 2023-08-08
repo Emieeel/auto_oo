@@ -477,11 +477,10 @@ class OO_energy:
 
 
 if __name__ == "__main__":
-    from cirq import dirac_notation
     import matplotlib.pyplot as plt
     from auto_oo.utils.miscellaneous import get_formal_geo
 
-    # torch.set_num_threads(12)
+    # Small example with a particular one- and two-rdm:
 
     geometry = get_formal_geo(140, 80)
     basis = "cc-pvdz"
@@ -493,7 +492,7 @@ if __name__ == "__main__":
     interface = 'torch'
     if interface == 'torch':
         torch.set_default_tensor_type(torch.DoubleTensor)
-        torch.set_num_threads(12)
+        # torch.set_num_threads(12)
 
     one_rdm_np = np.array(
         [
@@ -563,13 +562,6 @@ if __name__ == "__main__":
 
     one_rdm = math.convert_like(one_rdm_np, oo_energy.oao_mo_coeff)
     two_rdm = math.convert_like(two_rdm_np, oo_energy.oao_mo_coeff)
-    # mo_coeff = torch.from_numpy(mol.oao_coeff)
-    # from scipy.stats import ortho_group
-    # mo_transform = torch.from_numpy(ortho_group.rvs(mol.nao))
-    # oao_mo_coeff = mo_transform
-    # oo_energy.oao_mo_coeff = oao_mo_coeff
-    # print("check if property works:",
-    #       torch.allclose(oo_energy.mo_coeff, torch.from_numpy(mol.oao_coeff) @ oao_mo_coeff)     )
 
     plt.title("one rdm")
     plt.imshow(one_rdm)
@@ -618,13 +610,6 @@ if __name__ == "__main__":
 
     one_rdm_jax = math.convert_like(one_rdm_np, oo_energy_jax.oao_mo_coeff)
     two_rdm_jax = math.convert_like(two_rdm_np, oo_energy_jax.oao_mo_coeff)
-    # mo_coeff = torch.from_numpy(mol.oao_coeff)
-    # from scipy.stats import ortho_group
-    # mo_transform = torch.from_numpy(ortho_group.rvs(mol.nao))
-    # oao_mo_coeff = mo_transform
-    # oo_energy.oao_mo_coeff = oao_mo_coeff
-    # print("check if property works:",
-    #       torch.allclose(oo_energy.mo_coeff, torch.from_numpy(mol.oao_coeff) @ oao_mo_coeff)     )
 
     plt.title("one rdm")
     plt.imshow(one_rdm_jax)
