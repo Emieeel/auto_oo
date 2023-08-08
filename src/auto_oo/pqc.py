@@ -173,8 +173,8 @@ class Parameterized_circuit():
         """The first few parameters of the GateFabric ansatz are redundant,
         as they are rotations between active all-occupied or all-virtual
         orbitals. Set them to zero and then return the state."""
-        theta_full = math.zeros(len(self.redundant_idx) + self.theta_shape,
-                                like=math.get_interface(theta))
+        theta_full = math.convert_like(
+            math.zeros(len(self.redundant_idx) + self.theta_shape), theta)
         theta_full = math.set_index(theta_full, self.params_idx, theta)
         theta_full = math.reshape(theta_full, self.full_theta_shape)
         # import pdb
@@ -241,7 +241,7 @@ if __name__ == '__main__':
     dev = qml.device('default.qubit', wires=2*ncas)
     interface = 'torch'
 
-    torch.set_default_tensor_type(torch.DoubleTensor)
+    # torch.set_default_tensor_type(torch.DoubleTensor)
 
     np.random.seed(30)
 

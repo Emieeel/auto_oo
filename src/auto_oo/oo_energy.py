@@ -10,8 +10,6 @@ from functools import partial
 
 import numpy as np
 
-import torch
-
 from pennylane import math
 
 from auto_oo.moldata_pyscf import Moldata_pyscf
@@ -479,6 +477,7 @@ class OO_energy:
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from auto_oo.utils.miscellaneous import get_formal_geo
+    import torch
 
     # Small example with a particular one- and two-rdm:
 
