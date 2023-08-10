@@ -1,4 +1,4 @@
-# auto_oo
+# auto_oo: an autodifferentiable framework for molecular orbital-optimized variational quantum algorithms
 Generate orbital optimized cost functions based on electronic structure Hamiltonians in an active space, based on automatic differentation. Powered by [PennyLane](https://github.com/PennyLaneAI) using either a [Pytorch](https://pytorch.org/) or [Jax](https://github.com/google/jax) backend. Molecular structure calculations are performed with [PySCF](https://pyscf.org/).
 Supports gradients and hessians of hybrid cost functions based on orbital rotations and parameterized quantum circuits.
 We use a parameterization of orbitals by rotating the orthogonal atomic orbitals (OAOs).
