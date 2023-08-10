@@ -22,7 +22,8 @@ dependencies = [
     "cirq",
     "openfermion",
     "pennylane>=0.31.1",
-    "pyscf"
+    "pyscf",
+    "jax[cpu]"
 ]
 
 [project.urls]
