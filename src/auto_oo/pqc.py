@@ -7,6 +7,7 @@ Created on Thu Feb  9 15:39:19 2023
 """
 
 import itertools
+import warnings
 
 import numpy as np
 import pennylane as qml
@@ -136,8 +137,7 @@ class Parameterized_circuit():
             self.n_layers = n_layers
             self.up_then_down = False
             self.wires = list(range(self.n_qubits))
-            self.hfstate = math.convert_like(
-                qml.qchem.hf_state(nelecas, self.n_qubits), math.zeros(1, like=interface))
+            self.hfstate = math.array(qml.qchem.hf_state(nelecas, self.n_qubits), like=interface)
             self.full_theta_shape = qml.GateFabric.shape(self.n_layers, len(
                 self.wires))
 
@@ -152,10 +152,9 @@ class Parameterized_circuit():
             else:
                 self.redundant_idx = []
 
-            self.params_idx = math.convert_like(
+            self.params_idx = math.array(
                 np.array([x for x in range(np.prod(self.full_theta_shape))
-                          if x not in self.redundant_idx]),
-                math.zeros(1, like=interface))
+                          if x not in self.redundant_idx]), like=interface)
             self.theta_shape = len(self.params_idx)
             self.qnode = qml.qnode(dev, interface=interface, diff_method='backprop')(
                 self.gatefabric_state)
@@ -165,6 +164,9 @@ class Parameterized_circuit():
 
     def uccd_state(self, theta):
         """Return UCC(S)D state"""
+        if self.hfstate.dtype != theta.dtype:
+            warnings.warn(
+                "Input a single precision theta. Pennylane only supports double precision.")
         return uccd_circuit(theta,
                             self.wires, self.s_wires,
                             self.d_wires, self.hfstate, self.add_singles)
@@ -175,10 +177,12 @@ class Parameterized_circuit():
         orbitals. Set them to zero and then return the state."""
         theta_full = math.convert_like(
             math.zeros(len(self.redundant_idx) + self.theta_shape), theta)
+        if theta_full.dtype != theta.dtype:
+            warnings.warn(
+                "Input a single precision theta. Pennylane only supports double precision.")
+            theta_full = math.cast_like(theta_full, theta)
         theta_full = math.set_index(theta_full, self.params_idx, theta)
         theta_full = math.reshape(theta_full, self.full_theta_shape)
-        # import pdb
-        # pdb.set_trace()
         return gatefabric_circuit(theta_full, self.wires, self.hfstate)
 
     def init_zeros(self):
@@ -241,8 +245,6 @@ if __name__ == '__main__':
     dev = qml.device('default.qubit', wires=2*ncas)
     interface = 'torch'
 
-    # torch.set_default_tensor_type(torch.DoubleTensor)
-
     np.random.seed(30)
 
     pqc = Parameterized_circuit(ncas, nelecas, dev,
@@ -273,8 +275,5 @@ if __name__ == '__main__':
     if interface == 'torch':
         import torch
         grad = torch.autograd.functional.jacobian(rdms_from_theta, theta)
-        # rdms = rdms_from_theta(theta)
-        # rdms.backward()
-        # grad = theta.grad
     elif interface == 'autograd':
         grad = qml.grad(rdms_from_theta, argnum=0)(theta)
