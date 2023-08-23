@@ -353,28 +353,28 @@ class OO_energy:
         The rest of the RDM elements are determined by symmetry or are zero.
 
         TODO: incorporate only active space RDMS directly in Hessian"""
-        one_full = math.zeros((self.nao, self.nao))
-        two_full = math.zeros((self.nao, self.nao, self.nao, self.nao))
+        one_full = math.zeros((self.nao, self.nao), like='torch')
+        two_full = math.zeros((self.nao, self.nao, self.nao, self.nao), like='torch')
 
         one_full[self.occ_idx, self.occ_idx] = 2 * \
-            math.ones(len(self.occ_idx))
+            math.ones(len(self.occ_idx), like='torch')
         one_full[np.ix_(self.act_idx, self.act_idx)] = one_rdm
 
         two_full[np.ix_(*[self.occ_idx]*4)] = 4 * math.einsum(
-            'ij,kl->ijkl', *[math.eye(len(self.occ_idx))]*2) - 2 * math.einsum(
-            'il,jk->ijkl', *[math.eye(len(self.occ_idx))]*2)
+            'ij,kl->ijkl', *[math.eye(len(self.occ_idx), like='torch')]*2) - 2 * math.einsum(
+            'il,jk->ijkl', *[math.eye(len(self.occ_idx), like='torch')]*2)
         two_full[np.ix_(self.occ_idx, self.occ_idx,
                         self.act_idx, self.act_idx)] = 2 * math.einsum(
-            'wv,ij->ijwv', one_rdm, math.eye(len(self.occ_idx)))
+            'wv,ij->ijwv', one_rdm, math.eye(len(self.occ_idx), like='torch'))
         two_full[np.ix_(self.act_idx, self.act_idx,
                         self.occ_idx, self.occ_idx)] = 2 * math.einsum(
-            'wv,ij->wvij', one_rdm, math.eye(len(self.occ_idx)))
+            'wv,ij->wvij', one_rdm, math.eye(len(self.occ_idx), like='torch'))
         two_full[np.ix_(self.occ_idx, self.act_idx,
                         self.act_idx, self.occ_idx)] = -math.einsum(
-            'wv,ij->iwvj', one_rdm, math.eye(len(self.occ_idx)))
+            'wv,ij->iwvj', one_rdm, math.eye(len(self.occ_idx), like='torch'))
         two_full[np.ix_(self.act_idx, self.occ_idx,
                         self.occ_idx, self.act_idx)] = -math.einsum(
-            'wv,ij->vjiw', one_rdm, math.eye(len(self.occ_idx)))
+            'wv,ij->vjiw', one_rdm, math.eye(len(self.occ_idx), like='torch'))
         two_full[np.ix_(*[self.act_idx]*4)] = two_rdm
         return one_full, two_full
 
