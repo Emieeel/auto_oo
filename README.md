@@ -6,9 +6,9 @@ This code was developed as a tool to enable the calculation of Berry phases in m
 
 ## Install
 
-1. Create an anaconda or pip environment.
-2. Install PyTorch following the instructions in PyTorch's [Get Started](https://pytorch.org/get-started/locally/). (GPU support is not needed for small active spaces)
-3. Clone the repository `git clone git@github.com:EmielKoridon/auto_oo.git` and move into the cloned directory `cd auto_oo`.
+1. create an anaconda or pip environment.
+2. install PyTorch following the instructions in PyTorch's [Get Started](https://pytorch.org/get-started/locally/). (GPU support is not needed for small active spaces)
+3. Clone the repository `git clone git@github.com:EmielKoridon/auto_oo.git` and move into the cloned directory `cd auto_oo`
 4. Install auto_oo and its dependencies with `pip install .`
 
 ### Dependencies
