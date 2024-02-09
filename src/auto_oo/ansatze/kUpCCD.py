@@ -55,7 +55,7 @@ class kUpCCD(Operation):
     num_wires = AnyWires
     grad_method = None
 
-    def __init__(self, weights, wires, k=1, init_state=None, do_queue=True, id=None):
+    def __init__(self, weights, wires, k=1, init_state=None, id=None):
 
         if len(wires) < 4:
             raise ValueError(f"Requires at least four wires; got {len(wires)} wires.")
@@ -85,7 +85,7 @@ class kUpCCD(Operation):
             "d_wires": d_wires,
             "k": k,
         }
-        super().__init__(weights, wires=wires, do_queue=do_queue, id=id)
+        super().__init__(weights, wires=wires, id=id)
 
     @property
     def num_params(self):
