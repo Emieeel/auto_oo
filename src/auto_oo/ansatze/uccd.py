@@ -43,7 +43,7 @@ class UCCD(Operation):
     grad_method = None
 
     def __init__(
-        self, weights, wires, d_wires=None, init_state=None, do_queue=True, id=None
+        self, weights, wires, d_wires=None, init_state=None, id=None
     ):
 
         if not d_wires:
@@ -70,7 +70,7 @@ class UCCD(Operation):
 
         self._hyperparameters = {"init_state": init_state, "d_wires": d_wires}
 
-        super().__init__(weights, wires=wires, do_queue=do_queue, id=id)
+        super().__init__(weights, wires=wires, id=id)
 
     @property
     def num_params(self):

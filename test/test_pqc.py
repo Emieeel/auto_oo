@@ -15,7 +15,10 @@ from pennylane import math
 import torch
 from jax.config import config
 
-torch.set_default_dtype(torch.float64)
+if '2.1' in torch.__version__:
+    torch.set_default_dtype(torch.float64)
+else:
+    torch.set_default_tensor_type(torch.DoubleTensor)  # Required for compatibility with PennyLane
 config.update("jax_enable_x64", True)
 
 
